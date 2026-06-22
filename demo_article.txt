@@ -1,0 +1,13 @@
+# Sample News Article for TruthLens Demo
+
+## Government Announces New AI Policy Framework
+
+The Government today unveiled a new Artificial Intelligence policy framework aimed at encouraging innovation while ensuring responsible use of emerging technologies. Officials stated that the framework includes guidelines for transparency, data privacy, and accountability in AI systems deployed across industries.
+
+According to the Ministry of Technology, the initiative seeks to support startups, research institutions, and enterprises developing AI-powered solutions. The policy introduces funding opportunities for academic research and incentives for organizations investing in ethical AI practices.
+
+Industry experts welcomed the announcement, noting that clear regulations could help accelerate adoption while reducing concerns related to bias, misinformation, and security risks. Several technology companies expressed interest in collaborating with government agencies to establish best practices and compliance standards.
+
+The framework will undergo a public consultation period over the next three months before final implementation. Stakeholders from academia, industry, and civil society have been invited to provide feedback on the proposed regulations.
+
+Officials emphasized that the goal is to balance innovation with public trust, ensuring that AI technologies contribute positively to economic growth and societal development.

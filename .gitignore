@@ -1,0 +1,68 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+
+# Virtual Environment
+venv/
+.venv/
+env/
+
+# Environment Variables
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# VS Code
+.vscode/
+
+# PyCharm
+.idea/
+
+# Logs
+*.log
+
+# Coverage
+.coverage
+htmlcov/
+
+# Testing
+.pytest_cache/
+
+# Database
+*.db
+*.sqlite3
+
+# Build
+build/
+dist/
+
+# Docker
+docker-compose.override.yml
+
+# OS Files
+.DS_Store
+Thumbs.db
+# Datasets
+backend/datasets/
+
+# Training checkpoints
+backend/notebooks/results/
+
+# ML models
+backend/app/ml/saved_models/
+
+# HuggingFace artifacts
+*.safetensors
+*.pt
+*.bin
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# Environment
+.env
+venv/
+.venv/
