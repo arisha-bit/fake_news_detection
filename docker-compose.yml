@@ -19,18 +19,25 @@ services:
       context: ./backend
     env_file: ./backend/.env
     environment:
+      # Disable GPU — CPU-only inference
       - CUDA_VISIBLE_DEVICES=-1
       - TF_ENABLE_ONEDNN_OPTS=0
       - TF_CPP_MIN_LOG_LEVEL=3
+      - TF_NUM_INTEROP_THREADS=1
+      - TF_NUM_INTRAOP_THREADS=1
       - TOKENIZERS_PARALLELISM=false
     ports:
       - "8000:8000"
+    volumes:
+      # Persist uploaded files across container restarts
+      - uploads_data:/app/uploads
     depends_on:
       db:
         condition: service_healthy
     restart: on-failure
     command: >
-      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --timeout-keep-alive 120"
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --timeout-keep-alive 120"
 
   frontend:
     build:
@@ -42,3 +49,4 @@ services:
 
 volumes:
   postgres_data:
+  uploads_data:

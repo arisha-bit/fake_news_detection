@@ -66,3 +66,17 @@ backend/app/ml/saved_models/
 .env
 venv/
 .venv/
+
+# Uploads (temp files — volume-managed in Docker)
+backend/uploads/images/*
+backend/uploads/pdfs/*
+!backend/uploads/images/.gitkeep
+!backend/uploads/pdfs/.gitkeep
+
+# FAISS indexes (built at Docker image build time)
+backend/app/ml/embeddings/index/
+backend/app/ml/clip/index/
+
+# pytest cache
+.pytest_cache/
+backend/tests/__pycache__/

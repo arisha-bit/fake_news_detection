@@ -1,0 +1,282 @@
+{
+  "bbc.com": {
+    "trust_score": 90,
+    "reliability_score": 88,
+    "bias_rating": "CENTER",
+    "category": "Mainstream",
+    "credibility_label": "HIGH",
+    "notes": "UK public broadcaster. Strong editorial standards."
+  },
+  "bbc.co.uk": {
+    "trust_score": 90,
+    "reliability_score": 88,
+    "bias_rating": "CENTER",
+    "category": "Mainstream",
+    "credibility_label": "HIGH",
+    "notes": "UK public broadcaster. Strong editorial standards."
+  },
+  "reuters.com": {
+    "trust_score": 95,
+    "reliability_score": 94,
+    "bias_rating": "CENTER",
+    "category": "Mainstream",
+    "credibility_label": "HIGH",
+    "notes": "International news agency. Highly factual reporting."
+  },
+  "apnews.com": {
+    "trust_score": 95,
+    "reliability_score": 94,
+    "bias_rating": "CENTER",
+    "category": "Mainstream",
+    "credibility_label": "HIGH",
+    "notes": "Associated Press. Non-profit wire service."
+  },
+  "nytimes.com": {
+    "trust_score": 82,
+    "reliability_score": 80,
+    "bias_rating": "LEFT-CENTER",
+    "category": "Mainstream",
+    "credibility_label": "HIGH",
+    "notes": "Major US newspaper. Left-center editorial lean."
+  },
+  "washingtonpost.com": {
+    "trust_score": 80,
+    "reliability_score": 79,
+    "bias_rating": "LEFT-CENTER",
+    "category": "Mainstream",
+    "credibility_label": "HIGH",
+    "notes": "Major US newspaper. Left-center editorial lean."
+  },
+  "theguardian.com": {
+    "trust_score": 78,
+    "reliability_score": 77,
+    "bias_rating": "LEFT-CENTER",
+    "category": "Mainstream",
+    "credibility_label": "HIGH",
+    "notes": "UK/international newspaper. Left-center bias."
+  },
+  "foxnews.com": {
+    "trust_score": 55,
+    "reliability_score": 50,
+    "bias_rating": "RIGHT",
+    "category": "Mainstream",
+    "credibility_label": "MEDIUM",
+    "notes": "US cable news. Strong right-wing editorial bias."
+  },
+  "cnn.com": {
+    "trust_score": 68,
+    "reliability_score": 65,
+    "bias_rating": "LEFT-CENTER",
+    "category": "Mainstream",
+    "credibility_label": "MEDIUM",
+    "notes": "US cable news. Left-center bias. Some sensationalism."
+  },
+  "msnbc.com": {
+    "trust_score": 60,
+    "reliability_score": 58,
+    "bias_rating": "LEFT",
+    "category": "Mainstream",
+    "credibility_label": "MEDIUM",
+    "notes": "US cable news. Strong left editorial bias."
+  },
+  "nbcnews.com": {
+    "trust_score": 75,
+    "reliability_score": 74,
+    "bias_rating": "LEFT-CENTER",
+    "category": "Mainstream",
+    "credibility_label": "HIGH",
+    "notes": "US broadcast news. Generally factual."
+  },
+  "abcnews.go.com": {
+    "trust_score": 76,
+    "reliability_score": 75,
+    "bias_rating": "LEFT-CENTER",
+    "category": "Mainstream",
+    "credibility_label": "HIGH",
+    "notes": "US broadcast news. Generally factual."
+  },
+  "cbsnews.com": {
+    "trust_score": 75,
+    "reliability_score": 74,
+    "bias_rating": "LEFT-CENTER",
+    "category": "Mainstream",
+    "credibility_label": "HIGH",
+    "notes": "US broadcast news. Generally factual."
+  },
+  "npr.org": {
+    "trust_score": 85,
+    "reliability_score": 84,
+    "bias_rating": "LEFT-CENTER",
+    "category": "Mainstream",
+    "credibility_label": "HIGH",
+    "notes": "US public radio. High factual reporting standards."
+  },
+  "politico.com": {
+    "trust_score": 76,
+    "reliability_score": 75,
+    "bias_rating": "LEFT-CENTER",
+    "category": "Political",
+    "credibility_label": "HIGH",
+    "notes": "US political journalism. Generally factual."
+  },
+  "thehill.com": {
+    "trust_score": 72,
+    "reliability_score": 70,
+    "bias_rating": "CENTER",
+    "category": "Political",
+    "credibility_label": "HIGH",
+    "notes": "US political news. Relatively centrist."
+  },
+  "breitbart.com": {
+    "trust_score": 20,
+    "reliability_score": 18,
+    "bias_rating": "RIGHT",
+    "category": "Hyper-Partisan",
+    "credibility_label": "VERY_LOW",
+    "notes": "Far-right. Frequent misinformation and conspiracy content."
+  },
+  "infowars.com": {
+    "trust_score": 5,
+    "reliability_score": 4,
+    "bias_rating": "RIGHT",
+    "category": "Conspiracy",
+    "credibility_label": "VERY_LOW",
+    "notes": "Known conspiracy and misinformation site."
+  },
+  "naturalnews.com": {
+    "trust_score": 8,
+    "reliability_score": 6,
+    "bias_rating": "RIGHT",
+    "category": "Conspiracy",
+    "credibility_label": "VERY_LOW",
+    "notes": "Frequent health misinformation and conspiracy theories."
+  },
+  "theonion.com": {
+    "trust_score": 10,
+    "reliability_score": 5,
+    "bias_rating": "LEFT-CENTER",
+    "category": "Satire",
+    "credibility_label": "VERY_LOW",
+    "notes": "Satire publication. Not intended as factual news."
+  },
+  "babylonbee.com": {
+    "trust_score": 10,
+    "reliability_score": 5,
+    "bias_rating": "RIGHT-CENTER",
+    "category": "Satire",
+    "credibility_label": "VERY_LOW",
+    "notes": "Conservative satire. Not intended as factual news."
+  },
+  "aljazeera.com": {
+    "trust_score": 75,
+    "reliability_score": 73,
+    "bias_rating": "CENTER",
+    "category": "Mainstream",
+    "credibility_label": "HIGH",
+    "notes": "Qatar-based international broadcaster. Generally factual."
+  },
+  "dw.com": {
+    "trust_score": 88,
+    "reliability_score": 86,
+    "bias_rating": "CENTER",
+    "category": "Mainstream",
+    "credibility_label": "HIGH",
+    "notes": "German public broadcaster. High editorial standards."
+  },
+  "france24.com": {
+    "trust_score": 85,
+    "reliability_score": 83,
+    "bias_rating": "CENTER",
+    "category": "Mainstream",
+    "credibility_label": "HIGH",
+    "notes": "French public international broadcaster."
+  },
+  "rt.com": {
+    "trust_score": 18,
+    "reliability_score": 15,
+    "bias_rating": "RIGHT",
+    "category": "State Media",
+    "credibility_label": "VERY_LOW",
+    "notes": "Russian state media. Known for propaganda and disinformation."
+  },
+  "xinhuanet.com": {
+    "trust_score": 20,
+    "reliability_score": 18,
+    "bias_rating": "UNKNOWN",
+    "category": "State Media",
+    "credibility_label": "LOW",
+    "notes": "Chinese state news agency. Government-controlled."
+  },
+  "globaltimes.cn": {
+    "trust_score": 18,
+    "reliability_score": 16,
+    "bias_rating": "UNKNOWN",
+    "category": "State Media",
+    "credibility_label": "VERY_LOW",
+    "notes": "Chinese state tabloid. Nationalist editorial line."
+  },
+  "snopes.com": {
+    "trust_score": 85,
+    "reliability_score": 83,
+    "bias_rating": "LEFT-CENTER",
+    "category": "Fact-Check",
+    "credibility_label": "HIGH",
+    "notes": "Established fact-checking site."
+  },
+  "factcheck.org": {
+    "trust_score": 88,
+    "reliability_score": 87,
+    "bias_rating": "CENTER",
+    "category": "Fact-Check",
+    "credibility_label": "HIGH",
+    "notes": "Non-partisan US fact-checking organisation."
+  },
+  "politifact.com": {
+    "trust_score": 83,
+    "reliability_score": 82,
+    "bias_rating": "LEFT-CENTER",
+    "category": "Fact-Check",
+    "credibility_label": "HIGH",
+    "notes": "Pulitzer-winning US fact-checking organisation."
+  },
+  "economist.com": {
+    "trust_score": 88,
+    "reliability_score": 86,
+    "bias_rating": "CENTER",
+    "category": "Mainstream",
+    "credibility_label": "HIGH",
+    "notes": "UK weekly. High standards. Moderate liberal lean."
+  },
+  "time.com": {
+    "trust_score": 78,
+    "reliability_score": 76,
+    "bias_rating": "LEFT-CENTER",
+    "category": "Mainstream",
+    "credibility_label": "HIGH",
+    "notes": "Major US magazine. Generally factual."
+  },
+  "forbes.com": {
+    "trust_score": 72,
+    "reliability_score": 70,
+    "bias_rating": "RIGHT-CENTER",
+    "category": "Business",
+    "credibility_label": "HIGH",
+    "notes": "US business publication. Generally factual."
+  },
+  "bloomberg.com": {
+    "trust_score": 85,
+    "reliability_score": 84,
+    "bias_rating": "CENTER",
+    "category": "Business",
+    "credibility_label": "HIGH",
+    "notes": "Major financial news. High factual standards."
+  },
+  "wsj.com": {
+    "trust_score": 82,
+    "reliability_score": 80,
+    "bias_rating": "RIGHT-CENTER",
+    "category": "Mainstream",
+    "credibility_label": "HIGH",
+    "notes": "Wall Street Journal. Right-center news, hard news factual."
+  }
+}
