@@ -35,9 +35,6 @@ services:
       db:
         condition: service_healthy
     restart: on-failure
-    command: >
-      sh -c "alembic upgrade head &&
-             uvicorn app.main:app --host 0.0.0.0 --port 8000 --timeout-keep-alive 120"
 
   frontend:
     build:
