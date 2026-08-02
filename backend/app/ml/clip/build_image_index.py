@@ -108,9 +108,15 @@ def build():
             max_length=77,  # CLIP text limit
         )
         with torch.no_grad():
-            text_feats = model.get_text_features(**inputs)
+            output = model.get_text_features(**inputs)
+            # get_text_features returns a tensor directly, but guard against
+            # newer transformers versions wrapping it in a dataclass
+            if hasattr(output, "last_hidden_state"):
+                text_feats = output.last_hidden_state[:, 0, :]
+            else:
+                text_feats = output
             # L2-normalise for cosine similarity via inner product
-            text_feats = text_feats / text_feats.norm(dim=-1, keepdim=True)
+            text_feats = torch.nn.functional.normalize(text_feats, dim=-1)
 
         all_embeddings.append(text_feats.cpu().numpy())
         logger.info("  Embedded %d / %d", min(i + BATCH_SIZE, len(titles)), len(titles))

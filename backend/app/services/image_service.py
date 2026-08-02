@@ -163,9 +163,13 @@ def reverse_image_search(image_path: str, top_k: int = 5) -> tuple[list[dict], b
         inputs = processor(images=image, return_tensors="pt")
 
         with torch.no_grad():
-            image_feats = model.get_image_features(**inputs)
+            output = model.get_image_features(**inputs)
+            if hasattr(output, "last_hidden_state"):
+                image_feats = output.last_hidden_state[:, 0, :]
+            else:
+                image_feats = output
             # L2-normalise for cosine via inner product
-            image_feats = image_feats / image_feats.norm(dim=-1, keepdim=True)
+            image_feats = torch.nn.functional.normalize(image_feats, dim=-1)
 
         query_vec = image_feats.cpu().numpy().astype(np.float32)
 
