@@ -11,6 +11,9 @@ import ResultPage from './pages/ResultPage'
 import HistoryPage from './pages/HistoryPage'
 import ComparePage from './pages/ComparePage'
 import AnalyticsPage from './pages/AnalyticsPage'
+import UploadPage from './pages/UploadPage'
+import ClaimsPage from './pages/ClaimsPage'
+import ToolsPage from './pages/ToolsPage'
 
 export default function App() {
   return (
@@ -25,6 +28,9 @@ export default function App() {
             <Route path="/history" element={<HistoryPage />} />
             <Route path="/compare" element={<ComparePage />} />
             <Route path="/analytics" element={<AnalyticsPage />} />
+            <Route path="/upload" element={<UploadPage />} />
+            <Route path="/claims" element={<ClaimsPage />} />
+            <Route path="/tools" element={<ToolsPage />} />
           </Route>
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
