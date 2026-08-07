@@ -16,6 +16,7 @@ from app.models.keyword import Keyword
 from app.models.model_metric import ModelMetric
 from app.models.feedback import Feedback
 from app.models.uploaded_file import UploadedFile
+from app.models.image_verification import ImageVerification
 
 from app.api.auth import router as auth_router
 from app.api.prediction import router as prediction_router
@@ -31,6 +32,7 @@ from app.api.credibility import router as credibility_router
 from app.api.propaganda import router as propaganda_router
 from app.api.report import router as report_router
 from app.api.knowledge_graph import router as knowledge_graph_router
+from app.api.image_predict import router as image_predict_router
 
 Base.metadata.create_all(bind=engine)
 
@@ -64,3 +66,4 @@ app.include_router(credibility_router)
 app.include_router(propaganda_router)
 app.include_router(report_router)
 app.include_router(knowledge_graph_router)
+app.include_router(image_predict_router)

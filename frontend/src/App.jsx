@@ -14,6 +14,7 @@ import AnalyticsPage from './pages/AnalyticsPage'
 import UploadPage from './pages/UploadPage'
 import ClaimsPage from './pages/ClaimsPage'
 import ToolsPage from './pages/ToolsPage'
+import ImageVerifyPage from './pages/ImageVerifyPage'
 
 export default function App() {
   return (
@@ -31,6 +32,7 @@ export default function App() {
             <Route path="/upload" element={<UploadPage />} />
             <Route path="/claims" element={<ClaimsPage />} />
             <Route path="/tools" element={<ToolsPage />} />
+            <Route path="/image-verify" element={<ImageVerifyPage />} />
           </Route>
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

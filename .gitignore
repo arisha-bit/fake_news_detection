@@ -80,3 +80,7 @@ backend/app/ml/clip/index/
 # pytest cache
 .pytest_cache/
 backend/tests/__pycache__/
+
+# Image classifier trained model (large binary — train locally)
+backend/app/ml/saved_models/image_classifier.pt
+backend/app/ml/saved_models/image_classifier_metrics.json

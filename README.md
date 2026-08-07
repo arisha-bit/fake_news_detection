@@ -625,3 +625,85 @@ docker-compose up --build
 cd backend
 pytest tests/ -v
 ```
+
+---
+
+## v3.0 — Multimodal Image Verification Platform
+
+### Architecture
+
+```
+Uploaded Image
+      ↓
+  ┌───────────────────────────────────┐
+  │  Branch 1: OCR → Text Prediction │  EasyOCR + DistilBERT/Logistic/LSTM
+  │  Branch 2: Image Classification  │  EfficientNetB0 (trained)
+  │  Branch 3: Reverse Image Search  │  CLIP + FAISS
+  └───────────────────────────────────┘
+                    ↓
+         Combined Verdict Engine
+                    ↓
+       LIKELY FAKE | LIKELY REAL |
+     LIKELY MISLEADING | UNCERTAIN
+```
+
+### New API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/predict/image` | Standalone image classification (EfficientNetB0) |
+| POST | `/verify/image` | Full multimodal verification report |
+
+### Training the Image Classifier
+
+1. Prepare dataset with `fake/` and `real/` subfolders:
+```
+datasets/image_dataset/
+├── fake/   ← manipulated/fake news images
+└── real/   ← authentic news images
+```
+
+2. Run training:
+```bash
+cd backend
+python -m app.ml.image_classifier.train \
+    --data_dir datasets/image_dataset \
+    --epochs 10 \
+    --batch_size 32
+```
+
+Or use the notebook: `notebooks/06_image_classifier.ipynb`
+
+Model saved to: `app/ml/saved_models/image_classifier.pt`
+
+### POST /verify/image — Example Response
+
+```json
+{
+  "ocr_text": "Shocking discovery: scientists confirm...",
+  "text_prediction": "FAKE",
+  "text_confidence": 0.88,
+  "image_prediction": "FAKE",
+  "image_confidence": 0.91,
+  "image_class_probabilities": { "FAKE": 0.91, "REAL": 0.09 },
+  "similar_articles": [
+    {
+      "rank": 1,
+      "title": "Moon conspiracy theory debunked",
+      "label": "FAKE",
+      "similarity": 0.88,
+      "date": "2023-01-01"
+    }
+  ],
+  "clip_reuse_detected": true,
+  "overall_verdict": "LIKELY FAKE",
+  "reasoning": [
+    "Both OCR text analysis and image classification detected fake signals.",
+    "Image appears in known misleading news contexts."
+  ]
+}
+```
+
+### Graceful Degradation
+
+If the image classifier model hasn't been trained yet, `/verify/image` still works — it returns `image_prediction: "UNAVAILABLE"` and computes the verdict from OCR text and CLIP results only. The endpoint never crashes due to a missing model.
