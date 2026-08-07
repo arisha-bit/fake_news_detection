@@ -7,6 +7,7 @@ os.environ["TF_NUM_INTRAOP_THREADS"] = "1"
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.core.logging_config import configure_logging
 
 from app.db.database import engine, Base
 
@@ -35,6 +36,8 @@ from app.api.knowledge_graph import router as knowledge_graph_router
 from app.api.image_predict import router as image_predict_router
 
 Base.metadata.create_all(bind=engine)
+
+configure_logging()
 
 app = FastAPI(
     title="Fake News Detection API"
