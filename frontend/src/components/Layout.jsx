@@ -11,6 +11,7 @@ const navItems = [
   { to: '/history', label: 'History', icon: '≡' },
   { to: '/compare', label: 'Compare', icon: '⇌' },
   { to: '/analytics', label: 'Analytics', icon: '◈' },
+  { to: '/reports', label: 'Reports', icon: '📄' },
 ]
 
 export default function Layout() {

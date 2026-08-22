@@ -8,6 +8,7 @@ __pycache__/
 venv/
 .venv/
 env/
+project_env/
 
 # Environment Variables
 .env
@@ -45,42 +46,35 @@ docker-compose.override.yml
 # OS Files
 .DS_Store
 Thumbs.db
-# Datasets
+
+# Datasets (large files — not committed)
 backend/datasets/
 
-# Training checkpoints
+# Training checkpoints and logs
 backend/notebooks/results/
+backend/notebooks/logs/
 
-# ML models
-backend/app/ml/saved_models/
-
-# HuggingFace artifacts
+# ─── ML model files ───────────────────────────────────────────────────────────
+# Ignore large HuggingFace/PyTorch artifacts that should not be committed
 *.safetensors
-*.pt
 *.bin
 
-# Jupyter checkpoints
-.ipynb_checkpoints/
+# Do NOT ignore best_image_model.pth or logistic/lstm/tfidf models
+# They are required for the app to run and are tracked in git.
+# If they are too large for git, use Git LFS.
 
-# Environment
-.env
-venv/
-.venv/
+# Ignore the unused duplicate image_classifier.pt (EfficientNet — not used)
+backend/app/ml/saved_models/image_classifier.pt
+backend/app/ml/saved_models/image_classifier_metrics.json
 
 # Uploads (temp files — volume-managed in Docker)
 backend/uploads/images/*
-backend/uploads/pdfs/*
 !backend/uploads/images/.gitkeep
-!backend/uploads/pdfs/.gitkeep
 
-# FAISS indexes (built at Docker image build time)
+# FAISS indexes (built at entrypoint from datasets — not committed)
 backend/app/ml/embeddings/index/
 backend/app/ml/clip/index/
 
 # pytest cache
 .pytest_cache/
 backend/tests/__pycache__/
-
-# Image classifier trained model (large binary — train locally)
-backend/app/ml/saved_models/image_classifier.pt
-backend/app/ml/saved_models/image_classifier_metrics.json

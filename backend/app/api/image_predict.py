@@ -44,10 +44,10 @@ async def classify_image(
 ):
     """
     Upload an image and classify it as FAKE or REAL using the trained
-    EfficientNetB0 image classifier (visual features only, no OCR).
+    ResNet18 image classifier (visual features only — no OCR).
 
-    Requires training the model first:
-        python -m app.ml.image_classifier.train --data_dir <dataset_path>
+    Requires best_image_model.pth to be present in app/ml/saved_models/.
+    Returns HTTP 503 if the model weights are not available.
     """
     validate_image(file)
     _, _, file_path = await save_image_upload(file)

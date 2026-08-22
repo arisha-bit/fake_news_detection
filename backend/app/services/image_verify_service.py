@@ -1,13 +1,16 @@
 """
-Image Verification Orchestration Service — Part 5.
+Image Verification Orchestration Service.
 
 Combines three independent analysis branches:
-  1. OCR branch  — EasyOCR + existing text predictor (DistilBERT/logistic/LSTM)
-  2. Image branch — EfficientNetB0 image classifier
+  1. OCR branch  — EasyOCR + existing text predictor (logistic/LSTM/DistilBERT)
+  2. Image branch — ResNet18 image classifier (best_image_model.pth)
   3. CLIP branch  — FAISS reverse image search
 
 Each branch runs independently. If one fails it degrades gracefully
 (returns None for that branch) rather than failing the whole request.
+
+ResNet18 is the ONLY image classifier used here.
+Do NOT use EfficientNetB0 or image_classifier.pt.
 
 Final verdict logic:
   - Both FAKE → LIKELY FAKE
@@ -26,24 +29,41 @@ logger = logging.getLogger(__name__)
 def run_ocr_branch(image_path: str, model_choice: str = "logistic") -> dict:
     """
     Run OCR on the image then predict using the text pipeline.
-    Returns dict with ocr_text, prediction, confidence.
-    Returns None-filled dict on failure.
+
+    OCR failure does NOT fail the whole request — returns empty/None on error.
+    Only meaningful text (>20 chars) is passed to prediction.
+
+    Returns:
+        {ocr_text, text_prediction, text_confidence}
     """
     try:
-        from app.services.ocr_service import extract_text_from_image  # noqa
-        from app.api.prediction import _run_model  # noqa
+        from app.services.ocr_service import extract_text_from_image
+        from app.api.prediction import _run_model
 
         ocr_text = extract_text_from_image(image_path)
-        result = _run_model(model_choice, ocr_text)
 
-        logger.info("OCR branch: %s (%.2f%%)", result["prediction"], result["confidence"] * 100)
+        # Only predict if meaningful text was found
+        if not ocr_text or len(ocr_text.strip()) < 20:
+            logger.info("OCR branch: insufficient text extracted (%d chars)", len(ocr_text or ""))
+            return {
+                "ocr_text": ocr_text or "",
+                "text_prediction": None,
+                "text_confidence": None,
+            }
+
+        result = _run_model(model_choice, ocr_text)
+        logger.info(
+            "OCR branch: %s (%.2f%%)",
+            result["prediction"],
+            result["confidence"] * 100,
+        )
         return {
             "ocr_text": ocr_text,
             "text_prediction": result["prediction"],
             "text_confidence": result["confidence"],
         }
     except Exception as exc:
-        logger.warning("OCR branch failed: %s", exc)
+        logger.warning("OCR branch failed (non-fatal): %s", exc)
         return {
             "ocr_text": "",
             "text_prediction": None,
@@ -53,25 +73,40 @@ def run_ocr_branch(image_path: str, model_choice: str = "logistic") -> dict:
 
 def run_image_classification_branch(image_path: str) -> dict:
     """
-    Run EfficientNetB0 image classifier on the image.
-    Returns dict with image_prediction, image_confidence, class_probabilities.
-    Returns None-filled dict if model not trained yet.
+    Run ResNet18 image classifier on the image.
+
+    Uses best_image_model.pth via the existing predict_image inference module.
+    Returns None-filled dict if model not available.
+
+    Returns:
+        {image_prediction, image_confidence, image_class_probabilities}
     """
     try:
-        from app.ml.image_classifier.predict import predict_image  # noqa
+        from app.ml.inference.predict_image import predict_image
 
         result = predict_image(image_path)
+
+        # predict_image returns confidence as 0-100 float — normalise to 0-1
+        raw_conf = result.get("confidence", 0)
+        confidence = raw_conf / 100.0 if raw_conf > 1.0 else raw_conf
+
+        prediction = result.get("prediction", "UNKNOWN")
+
         logger.info(
-            "Image branch: %s (%.2f%%)",
-            result["prediction"], result["confidence"] * 100
+            "ResNet18 branch: %s (%.2f%%)", prediction, confidence * 100
         )
+
         return {
-            "image_prediction": result["prediction"],
-            "image_confidence": result["confidence"],
-            "image_class_probabilities": result["class_probabilities"],
+            "image_prediction": prediction,
+            "image_confidence": round(confidence, 4),
+            "image_class_probabilities": {
+                prediction: round(confidence, 4),
+            },
         }
     except Exception as exc:
-        logger.warning("Image classification branch failed (model may not be trained): %s", exc)
+        logger.warning(
+            "Image classification branch unavailable (model may not exist): %s", exc
+        )
         return {
             "image_prediction": None,
             "image_confidence": None,
@@ -82,19 +117,29 @@ def run_image_classification_branch(image_path: str) -> dict:
 def run_clip_branch(image_path: str, top_k: int = 5) -> dict:
     """
     Run CLIP reverse image search against the FAISS index.
-    Returns dict with similar_articles and reuse_detected.
+
+    CLIP similarity results represent semantic/visual similarity to indexed
+    news articles. They are retrieval evidence — NOT proof of image reuse
+    or misinformation on their own.
+
+    Returns:
+        {similar_articles, clip_reuse_detected}
     """
     try:
-        from app.services.image_service import reverse_image_search  # noqa
+        from app.services.image_service import reverse_image_search
 
         results, reuse = reverse_image_search(image_path, top_k=top_k)
-        logger.info("CLIP branch: %d matches, reuse=%s", len(results), reuse)
+        logger.info(
+            "CLIP branch: %d similar articles found, high_similarity=%s",
+            len(results),
+            reuse,
+        )
         return {
             "similar_articles": results,
             "clip_reuse_detected": reuse,
         }
     except Exception as exc:
-        logger.warning("CLIP branch failed: %s", exc)
+        logger.warning("CLIP branch failed (non-fatal): %s", exc)
         return {
             "similar_articles": [],
             "clip_reuse_detected": False,
@@ -107,46 +152,79 @@ def compute_verdict(
     clip_reuse: bool,
 ) -> tuple[str, list[str]]:
     """
-    Combine branch results into an overall verdict and reasoning list.
+    Combine branch results into a cautious overall verdict and reasoning list.
+
+    Reasoning language is calibrated to reflect actual model evidence
+    without making claims stronger than the evidence supports.
 
     Returns:
         (verdict_string, [reasoning_sentence, ...])
     """
-    reasoning = []
+    reasoning: list[str] = []
     both_available = text_prediction is not None and image_prediction is not None
 
     if not both_available:
         if text_prediction == "FAKE":
-            reasoning.append("OCR text analysis detected fake news patterns.")
+            reasoning.append(
+                "OCR text analysis detected linguistic patterns associated with fake news."
+            )
             return "LIKELY FAKE", reasoning
+
         if image_prediction == "FAKE":
-            reasoning.append("Image classification detected image manipulation.")
+            reasoning.append(
+                "Image classifier detected visual patterns associated with misleading content."
+            )
             return "LIKELY FAKE", reasoning
-        reasoning.append("Insufficient data for a conclusive verdict.")
+
+        reasoning.append(
+            "Only one analysis branch returned results. "
+            "Verdict is uncertain without corroborating evidence."
+        )
         return "UNCERTAIN", reasoning
 
-    # Both available
+    # Both branches available
     if text_prediction == "FAKE" and image_prediction == "FAKE":
-        reasoning.append("Both OCR text analysis and image classification detected fake signals.")
+        reasoning.append(
+            "Both OCR text analysis and image classification indicate fake news signals."
+        )
         if clip_reuse:
-            reasoning.append("Image appears in known misleading news contexts.")
+            reasoning.append(
+                "Visually similar images appear in indexed news content — "
+                "retrieved for reference only."
+            )
         return "LIKELY FAKE", reasoning
 
     if text_prediction == "REAL" and image_prediction == "REAL":
-        reasoning.append("Both OCR text and image analysis indicate authentic content.")
+        reasoning.append(
+            "Both OCR text and image analysis indicate content consistent with real news."
+        )
         if clip_reuse:
-            reasoning.append("Similar images found in known news — consistent with real reporting.")
+            reasoning.append(
+                "Similar images found in indexed news — "
+                "consistent with genuine news reporting."
+            )
         return "LIKELY REAL", reasoning
 
     if image_prediction == "FAKE" and text_prediction == "REAL":
-        reasoning.append("Image appears manipulated or out-of-context despite neutral text.")
+        reasoning.append(
+            "Image classifier flagged the image, but OCR text analysis found neutral language. "
+            "The image may be out-of-context or the text content may be accurate."
+        )
         if clip_reuse:
-            reasoning.append("Image has been used in other news contexts — possible misuse.")
+            reasoning.append(
+                "Similar images retrieved from indexed news — "
+                "context should be verified independently."
+            )
         return "LIKELY MISLEADING", reasoning
 
     if image_prediction == "REAL" and text_prediction == "FAKE":
-        reasoning.append("Image appears authentic but accompanying text contains fake news patterns.")
+        reasoning.append(
+            "Image appears visually authentic, but text analysis detected "
+            "linguistic patterns associated with fake news."
+        )
         return "LIKELY FAKE", reasoning
 
-    reasoning.append("Analysis did not produce a conclusive signal.")
+    reasoning.append(
+        "Analysis branches produced inconclusive or conflicting signals."
+    )
     return "UNCERTAIN", reasoning

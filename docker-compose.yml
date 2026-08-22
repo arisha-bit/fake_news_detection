@@ -17,9 +17,9 @@ services:
   backend:
     build:
       context: ./backend
-    env_file: ./backend/.env
+    env_file:
+      - ./backend/.env
     environment:
-      # Disable GPU — CPU-only inference
       - CUDA_VISIBLE_DEVICES=-1
       - TF_ENABLE_ONEDNN_OPTS=0
       - TF_CPP_MIN_LOG_LEVEL=3
@@ -29,12 +29,19 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      # Persist uploaded files across container restarts
       - uploads_data:/app/uploads
+      - faiss_index:/app/app/ml/embeddings/index
+      - clip_index:/app/app/ml/clip/index
     depends_on:
       db:
         condition: service_healthy
     restart: on-failure
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   frontend:
     build:
@@ -47,3 +54,5 @@ services:
 volumes:
   postgres_data:
   uploads_data:
+  faiss_index:
+  clip_index:

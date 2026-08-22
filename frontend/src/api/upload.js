@@ -8,14 +8,6 @@ export const uploadImage = (formData, model = 'logistic') => {
   })
 }
 
-export const uploadPdf = (formData, model = 'logistic') => {
-  const params = new URLSearchParams({ model })
-  return api.post(`/upload/pdf?${params}`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-    timeout: 120000,
-  })
-}
-
 export const extractClaims = (data) => api.post('/claims/extract', data)
 
 export const searchEvidence = (data) => api.post('/evidence/search', data)

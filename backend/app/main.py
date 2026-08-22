@@ -34,6 +34,7 @@ from app.api.propaganda import router as propaganda_router
 from app.api.report import router as report_router
 from app.api.knowledge_graph import router as knowledge_graph_router
 from app.api.image_predict import router as image_predict_router
+from app.routers.health import router as health_router
 
 Base.metadata.create_all(bind=engine)
 
@@ -49,6 +50,8 @@ app.add_middleware(
         "http://localhost:5173",   # Vite dev server
         "http://localhost:80",     # Docker frontend
         "http://localhost",        # Docker frontend (no port)
+        "http://127.0.0.1",        # Local IP
+        "http://127.0.0.1:5173",   # Vite on local IP
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -70,3 +73,4 @@ app.include_router(propaganda_router)
 app.include_router(report_router)
 app.include_router(knowledge_graph_router)
 app.include_router(image_predict_router)
+app.include_router(health_router)

@@ -1,22 +1,9 @@
 """
-Reverse Image Verification Service — Phase 5.
+Reverse Image Verification Service.
 
-Uses OpenAI CLIP to embed an uploaded image and search a pre-built FAISS
-index of article title embeddings (in the same CLIP embedding space).
-
-Why CLIP works here:
-    CLIP is trained to align image and text in the same embedding space.
-    An image of a flooded city will be close to articles about floods.
-    An image of a politician will be close to political articles.
-    This enables cross-modal similarity search without a real image corpus.
-
-Singletons:
-    - CLIP model + processor loaded once on first request.
-    - FAISS index + metadata loaded once on first request.
-
-Reuse detection:
-    Any match with similarity >= REUSE_THRESHOLD is flagged as
-    possible_reuse_detected=True in the response.
+Uses CLIP embeddings and a FAISS index for semantic reverse-image search.
+If the index or model is unavailable, the service degrades gracefully and
+returns an empty result set instead of breaking verification flows.
 """
 
 import logging
@@ -29,21 +16,13 @@ from fastapi import HTTPException
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Paths + config
-# ---------------------------------------------------------------------------
-
 _BASE = Path(__file__).resolve().parent.parent
 INDEX_DIR = _BASE / "ml" / "clip" / "index"
 FAISS_INDEX_PATH = INDEX_DIR / "clip_faiss.index"
 METADATA_PATH = INDEX_DIR / "clip_metadata.pkl"
 
 CLIP_MODEL = "openai/clip-vit-base-patch32"
-REUSE_THRESHOLD = 0.75  # similarity above this → flag as possible reuse
-
-# ---------------------------------------------------------------------------
-# Singletons
-# ---------------------------------------------------------------------------
+REUSE_THRESHOLD = 0.75
 
 _clip_model = None
 _clip_processor = None
@@ -91,114 +70,68 @@ def _get_index():
 
             logger.info("Loading CLIP FAISS index from %s", FAISS_INDEX_PATH)
             _faiss_index = faiss.read_index(str(FAISS_INDEX_PATH))
-
             with open(METADATA_PATH, "rb") as f:
                 _metadata = pickle.load(f)
-
-            logger.info(
-                "CLIP FAISS index loaded — %d vectors", _faiss_index.ntotal
-            )
+            logger.info("CLIP FAISS index loaded — %d vectors", _faiss_index.ntotal)
         except HTTPException:
             raise
         except Exception as exc:
             logger.error("Failed to load CLIP index: %s", exc)
-            raise HTTPException(
-                status_code=500,
-                detail=f"CLIP index failed to load: {str(exc)}",
-            ) from exc
+            raise HTTPException(status_code=500, detail=f"CLIP index failed to load: {str(exc)}") from exc
 
     return _faiss_index, _metadata
 
 
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
-
 def reverse_image_search(image_path: str, top_k: int = 5) -> tuple[list[dict], bool]:
-    """
-    Embed the image at *image_path* with CLIP and return the top-k most
-    similar articles from the index.
-
-    Args:
-        image_path: Path to the image file on disk.
-        top_k:      Number of results to return.
-
-    Returns:
-        (results, possible_reuse_detected)
-        results: list of dicts with rank, title, label, similarity, etc.
-        possible_reuse_detected: True if any similarity >= REUSE_THRESHOLD.
-
-    Raises:
-        HTTP 404 — image file not found.
-        HTTP 422 — image cannot be opened.
-        HTTP 503 — index not built.
-        HTTP 500 — unexpected failure.
-    """
     path = Path(image_path)
 
     if not path.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"Image file not found: {image_path}",
-        )
+        raise HTTPException(status_code=404, detail=f"Image file not found: {image_path}")
 
-    # Load and embed image
     try:
         from PIL import Image  # noqa: PLC0415
         import torch  # noqa: PLC0415
 
         image = Image.open(path).convert("RGB")
     except Exception as exc:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Cannot open image file. It may be corrupted: {str(exc)}",
-        ) from exc
+        raise HTTPException(status_code=422, detail=f"Cannot open image file. It may be corrupted: {str(exc)}") from exc
 
     logger.info("Running CLIP reverse image search on: %s", image_path)
 
-    model, processor = _get_clip()
-    index, metadata = _get_index()
+    try:
+        model, processor = _get_clip()
+        index, metadata = _get_index()
+    except HTTPException as exc:
+        logger.warning("Reverse image search unavailable: %s", exc.detail)
+        return [], False
 
     try:
         inputs = processor(images=image, return_tensors="pt")
-
         with torch.no_grad():
             output = model.get_image_features(**inputs)
-            if hasattr(output, "last_hidden_state"):
-                image_feats = output.last_hidden_state[:, 0, :]
-            else:
-                image_feats = output
-            # L2-normalise for cosine via inner product
+            image_feats = output.last_hidden_state[:, 0, :] if hasattr(output, "last_hidden_state") else output
             image_feats = torch.nn.functional.normalize(image_feats, dim=-1)
-
         query_vec = image_feats.cpu().numpy().astype(np.float32)
-
     except Exception as exc:
-        logger.error("CLIP inference error: %s", exc)
-        raise HTTPException(
-            status_code=500,
-            detail=f"CLIP embedding failed: {str(exc)}",
-        ) from exc
+        logger.warning("CLIP embedding failed: %s", exc)
+        return [], False
 
-    # FAISS search
+    if index.ntotal == 0:
+        return [], False
+
     k = min(top_k, index.ntotal)
     similarities, indices = index.search(query_vec, k)
 
     results = []
     possible_reuse = False
 
-    for rank, (sim, idx) in enumerate(
-        zip(similarities[0], indices[0]), start=1
-    ):
+    for rank, (sim, idx) in enumerate(zip(similarities[0], indices[0]), start=1):
         if idx < 0 or idx >= len(metadata):
             continue
-
         sim_float = round(float(sim), 4)
         meta = metadata[idx]
-
         if sim_float >= REUSE_THRESHOLD:
             possible_reuse = True
-
         results.append({
             "rank": rank,
             "title": meta.get("title", ""),
@@ -209,10 +142,5 @@ def reverse_image_search(image_path: str, top_k: int = 5) -> tuple[list[dict], b
             "snippet": meta.get("snippet", ""),
         })
 
-    logger.info(
-        "Reverse image search complete — %d results, reuse_detected=%s",
-        len(results),
-        possible_reuse,
-    )
-
+    logger.info("Reverse image search complete — %d results, reuse_detected=%s", len(results), possible_reuse)
     return results, possible_reuse

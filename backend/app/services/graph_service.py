@@ -1,29 +1,3 @@
-"""
-Knowledge Graph Service — Phase 10.
-
-Extracts named entities from text using spaCy NER and builds a
-co-occurrence graph suitable for frontend visualisation.
-
-Entity types extracted:
-    PERSON  — people, characters
-    ORG     — companies, agencies, institutions
-    GPE     — countries, cities, states
-    DATE    — absolute or relative dates
-    EVENT   — named events (elections, wars, etc.)
-    OTHER   — any remaining entity types worth keeping
-
-Graph construction:
-    Nodes  — unique normalised entities (lowercased, stripped)
-    Edges  — two entities share an edge if they co-occur in the same sentence
-             edge weight = number of sentences they share
-
-Design:
-    - Reuses the spaCy singleton from claim_service (_get_nlp).
-    - Entity text is normalised to reduce duplicates
-      ("Donald Trump" / "trump" → same node).
-    - Edges are deduplicated and weighted.
-    - Results are sorted by frequency (most prominent entities first).
-"""
 
 import logging
 from collections import Counter, defaultdict
