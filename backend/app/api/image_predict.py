@@ -171,5 +171,11 @@ async def verify_image(
             upload_id=record.id,
         )
 
+    except Exception as exc:
+        logger.error(
+            "Image verification failed — user=%s, file=%s, error=%s",
+            current_user.id, file.filename, exc, exc_info=True
+        )
+        raise
     finally:
         delete_temp_file(file_path)

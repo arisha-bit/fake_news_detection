@@ -30,8 +30,8 @@ def run_ocr_branch(image_path: str, model_choice: str = "logistic") -> dict:
     """
     Run OCR on the image then predict using the text pipeline.
 
-    OCR failure does NOT fail the whole request — returns empty/None on error.
-    Only meaningful text (>20 chars) is passed to prediction.
+    OCR returns empty string when no text found — this is NOT an error.
+    Only runs prediction if meaningful text (>20 chars) is found.
 
     Returns:
         {ocr_text, text_prediction, text_confidence}
@@ -42,9 +42,11 @@ def run_ocr_branch(image_path: str, model_choice: str = "logistic") -> dict:
 
         ocr_text = extract_text_from_image(image_path)
 
-        # Only predict if meaningful text was found
         if not ocr_text or len(ocr_text.strip()) < 20:
-            logger.info("OCR branch: insufficient text extracted (%d chars)", len(ocr_text or ""))
+            logger.info(
+                "OCR branch: no meaningful text extracted (%d chars) — skipping text analysis",
+                len(ocr_text or ""),
+            )
             return {
                 "ocr_text": ocr_text or "",
                 "text_prediction": None,
@@ -63,7 +65,7 @@ def run_ocr_branch(image_path: str, model_choice: str = "logistic") -> dict:
             "text_confidence": result["confidence"],
         }
     except Exception as exc:
-        logger.warning("OCR branch failed (non-fatal): %s", exc)
+        logger.warning("OCR branch failed (non-fatal): %s", exc, exc_info=True)
         return {
             "ocr_text": "",
             "text_prediction": None,

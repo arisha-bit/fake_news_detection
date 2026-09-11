@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { searchEvidence, checkCredibility, analysePropaganda, generateReport, extractKnowledgeGraph } from '../api/upload'
+import { searchEvidence, checkCredibility, analysePropaganda, extractKnowledgeGraph } from '../api/upload'
 
 // ─── Evidence Search ───────────────────────────────────────────────────────────
 function EvidenceTab() {
@@ -288,74 +288,12 @@ function KnowledgeGraphTab() {
   )
 }
 
-// ─── Report Generator ─────────────────────────────────────────────────────────
-function ReportTab() {
-  const [text, setText] = useState('')
-  const [model, setModel] = useState('logistic')
-  const [sourceUrl, setSourceUrl] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-
-  const submit = async (e) => {
-    e.preventDefault()
-    setError(''); setLoading(true)
-    try {
-      const res = await generateReport({
-        text, model,
-        source_url: sourceUrl || null,
-        include_claims: true, include_evidence: true,
-        include_propaganda: true, include_credibility: !!sourceUrl,
-      })
-      const blob = new Blob([res.data], { type: 'application/pdf' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `verification_report_${Date.now()}.pdf`
-      a.click()
-      URL.revokeObjectURL(url)
-    } catch (err) { setError('Report generation failed. Please try again.') }
-    finally { setLoading(false) }
-  }
-
-  return (
-    <div className="flex flex-col gap-4">
-      <form onSubmit={submit} className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col gap-4">
-        <textarea rows={5} value={text} onChange={(e) => setText(e.target.value)} required
-          placeholder="Paste article text for the full verification report..."
-          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm resize-none focus:outline-none focus:border-indigo-400 text-slate-700" />
-        <input value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)}
-          placeholder="Source URL (optional, for credibility section)"
-          className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-400 text-slate-700" />
-        <div className="flex gap-2">
-          {['logistic','lstm','bert'].map((m) => (
-            <button key={m} type="button" onClick={() => setModel(m)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition capitalize ${
-                model === m ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-white border-slate-200 text-slate-500'
-              }`}>{m}</button>
-          ))}
-        </div>
-        {error && <p className="text-red-500 text-sm">{error}</p>}
-        <button type="submit" disabled={loading || !text.trim()}
-          className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-lg py-3 text-sm font-semibold text-white">
-          {loading ? (
-            <span className="flex items-center justify-center gap-2">
-              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              Generating PDF...
-            </span>
-          ) : '📄 Generate PDF Report'}
-        </button>
-      </form>
-    </div>
-  )
-}
-
 // ─── Main ToolsPage ───────────────────────────────────────────────────────────
 const TABS = [
   { id: 'evidence', label: 'Evidence' },
   { id: 'credibility', label: 'Credibility' },
   { id: 'propaganda', label: 'Propaganda' },
   { id: 'graph', label: 'Knowledge Graph' },
-  { id: 'report', label: 'PDF Report' },
 ]
 
 export default function ToolsPage() {
@@ -383,7 +321,6 @@ export default function ToolsPage() {
       {activeTab === 'credibility' && <CredibilityTab />}
       {activeTab === 'propaganda' && <PropagandaTab />}
       {activeTab === 'graph' && <KnowledgeGraphTab />}
-      {activeTab === 'report' && <ReportTab />}
     </div>
   )
 }

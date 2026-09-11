@@ -1,115 +1,137 @@
-import joblib
-import shap
+"""
+SHAP explainability for Logistic Regression + TF-IDF.
+
+Models are loaded lazily on first call to avoid startup crashes
+if saved_models are missing.
+
+IMPORTANT: SHAP explains the Logistic Regression model ONLY.
+It does not explain LSTM or DistilBERT predictions.
+"""
+
+import logging
 from pathlib import Path
+from typing import Optional
 
-
-# --------------------------------------------------
-# Paths
-# --------------------------------------------------
+logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-MODEL_PATH = (
-    BASE_DIR
-    / "saved_models"
-    / "logistic.pkl"
-)
+MODEL_PATH = BASE_DIR / "saved_models" / "logistic.pkl"
+VECTORIZER_PATH = BASE_DIR / "saved_models" / "tfidf.pkl"
 
-VECTORIZER_PATH = (
-    BASE_DIR
-    / "saved_models"
-    / "tfidf.pkl"
-)
+# ---------------------------------------------------------------------------
+# Lazy singletons
+# ---------------------------------------------------------------------------
 
-
-# --------------------------------------------------
-# Load model and TF-IDF vectorizer
-# --------------------------------------------------
-
-model = joblib.load(MODEL_PATH)
-vectorizer = joblib.load(VECTORIZER_PATH)
+_model = None
+_vectorizer = None
+_explainer = None
 
 
-# --------------------------------------------------
-# SHAP Explainer
-# --------------------------------------------------
+def _get_components():
+    """Load model, vectorizer, and SHAP explainer on first call."""
+    global _model, _vectorizer, _explainer
 
-explainer = shap.LinearExplainer(
-    model,
-    vectorizer.transform([
-        "This is a background example for SHAP."
-    ])
-)
+    if _model is None:
+        import joblib
+        import shap
+
+        if not MODEL_PATH.exists():
+            raise FileNotFoundError(
+                f"Logistic model not found at {MODEL_PATH}"
+            )
+        if not VECTORIZER_PATH.exists():
+            raise FileNotFoundError(
+                f"TF-IDF vectorizer not found at {VECTORIZER_PATH}"
+            )
+
+        logger.info("Loading logistic.pkl and tfidf.pkl for SHAP...")
+        _model = joblib.load(MODEL_PATH)
+        _vectorizer = joblib.load(VECTORIZER_PATH)
+
+        _explainer = shap.LinearExplainer(
+            _model,
+            _vectorizer.transform(["This is a background example for SHAP."])
+        )
+        logger.info("SHAP explainer ready.")
+
+    return _model, _vectorizer, _explainer
 
 
-# --------------------------------------------------
-# Explain prediction
-# --------------------------------------------------
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
 
+def explain_prediction(text: str, top_k: int = 10) -> dict:
+    """
+    Generate a SHAP explanation for the Logistic Regression prediction.
 
-def explain_prediction(text: str, top_k: int = 10):
+    This function explains the LOGISTIC REGRESSION model only.
+    Do not use this to explain LSTM or DistilBERT predictions.
 
-    # Convert text into TF-IDF features
+    Args:
+        text:   The article text to explain.
+        top_k:  Max number of influential words to return.
+
+    Returns:
+        {
+            "prediction": "REAL" | "FAKE",
+            "explanations": [
+                {"word": str, "impact": float, "direction": "REAL"|"FAKE"},
+                ...
+            ]
+        }
+
+    Raises:
+        FileNotFoundError — model files missing.
+        Exception — inference failure.
+    """
+    model, vectorizer, explainer = _get_components()
+
+    # TF-IDF transform
     vector = vectorizer.transform([text])
 
-    # Get the model prediction
-    prediction = model.predict(vector)[0]
+    # Logistic Regression prediction
+    prediction_int = model.predict(vector)[0]
 
-    # Get SHAP explanation
+    # SHAP values
     shap_values = explainer(vector)
-
     values = shap_values.values
 
-    # Handle SHAP output shape
+    # Handle both 2D and 3D SHAP output shapes
     if values.ndim == 3:
+        # Shape (1, n_features, n_classes) — take class 1 (REAL)
         values = values[0, :, 1]
     else:
+        # Shape (1, n_features)
         values = values[0]
 
-    # TF-IDF feature names
-    feature_names = (
-        vectorizer.get_feature_names_out()
-    )
+    feature_names = vectorizer.get_feature_names_out()
 
-    # Only consider words actually present in the article
+    # Only include words that actually appear in this text
     feature_indices = vector.nonzero()[1]
 
     explanations = []
-
-    for index in feature_indices:
-
-        impact = float(values[index])
-
-        # For our binary Logistic Regression:
-        #
-        # Positive SHAP → REAL (class 1)
-        # Negative SHAP → FAKE (class 0)
-
-        if impact > 0:
-            direction = "REAL"
-        else:
-            direction = "FAKE"
-
+    for idx in feature_indices:
+        impact = float(values[idx])
+        # Positive SHAP → pushes toward REAL (class 1)
+        # Negative SHAP → pushes toward FAKE (class 0)
+        direction = "REAL" if impact > 0 else "FAKE"
         explanations.append({
-            "word": feature_names[index],
-            "impact": round(
-                abs(impact),
-                4
-            ),
-            "direction": direction
+            "word": str(feature_names[idx]),   # ensure plain Python str, not np.str_
+            "impact": round(abs(impact), 4),
+            "direction": direction,
         })
 
-    # Most influential features first
-    explanations.sort(
-        key=lambda x: x["impact"],
-        reverse=True
+    explanations.sort(key=lambda x: x["impact"], reverse=True)
+
+    logger.debug(
+        "SHAP explanation: prediction=%s, top_features=%s",
+        "REAL" if prediction_int == 1 else "FAKE",
+        [e["word"] for e in explanations[:5]],
     )
 
     return {
-        "prediction": (
-            "REAL"
-            if prediction == 1
-            else "FAKE"
-        ),
-        "explanations": explanations[:top_k]
+        "prediction": "REAL" if prediction_int == 1 else "FAKE",
+        "explanations": explanations[:top_k],
     }

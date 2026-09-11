@@ -31,7 +31,6 @@ from app.api.evidence import router as evidence_router
 from app.api.images import router as images_router
 from app.api.credibility import router as credibility_router
 from app.api.propaganda import router as propaganda_router
-from app.api.report import router as report_router
 from app.api.knowledge_graph import router as knowledge_graph_router
 from app.api.image_predict import router as image_predict_router
 from app.routers.health import router as health_router
@@ -70,7 +69,6 @@ app.include_router(evidence_router)
 app.include_router(images_router)
 app.include_router(credibility_router)
 app.include_router(propaganda_router)
-app.include_router(report_router)
 app.include_router(knowledge_graph_router)
 app.include_router(image_predict_router)
 app.include_router(health_router)
