@@ -46,10 +46,17 @@ def analytics_overview(
         .count()
     )
 
+    avg_confidence = (
+        db.query(func.avg(Prediction.confidence))
+        .filter(Prediction.user_id == current_user.id)
+        .scalar()
+    ) or 0.0
+
     return {
         "total_predictions": total,
         "fake_predictions": fake_count,
-        "real_predictions": real_count
+        "real_predictions": real_count,
+        "average_confidence": round(float(avg_confidence), 4),
     }
 @router.get("/models")
 def model_usage(

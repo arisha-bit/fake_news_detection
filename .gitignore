@@ -47,6 +47,12 @@ docker-compose.override.yml
 .DS_Store
 Thumbs.db
 
+# Node
+frontend/node_modules/
+
+# Frontend build output
+frontend/dist/
+
 # Datasets (large files — not committed)
 backend/datasets/
 
@@ -59,8 +65,8 @@ backend/notebooks/logs/
 *.safetensors
 *.bin
 
-# Do NOT ignore best_image_model.pth or logistic/lstm/tfidf models
-# They are required for the app to run and are tracked in git.
+# Do NOT ignore best_image_model.pth or logistic/lstm/tfidf models —
+# they are required for the app to run and are tracked in git.
 # If they are too large for git, use Git LFS.
 
 # Ignore the unused duplicate image_classifier.pt (EfficientNet — not used)
@@ -74,6 +80,12 @@ backend/uploads/images/*
 # FAISS indexes (built at entrypoint from datasets — not committed)
 backend/app/ml/embeddings/index/
 backend/app/ml/clip/index/
+
+# Generated Grad-CAM heatmaps (runtime artifacts — not committed)
+backend/static/heatmaps/
+# Loose test heatmap images at repo root
+gradcam_*.jpg
+gradcam_*.png
 
 # pytest cache
 .pytest_cache/

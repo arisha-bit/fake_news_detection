@@ -14,6 +14,7 @@ Design:
 
 import logging
 import pickle
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -58,6 +59,7 @@ def _get_index():
         try:
             import faiss  # noqa: PLC0415
 
+            t0 = time.perf_counter()
             logger.info("Loading FAISS index from %s", FAISS_INDEX_PATH)
             _faiss_index = faiss.read_index(str(FAISS_INDEX_PATH))
 
@@ -65,7 +67,7 @@ def _get_index():
                 _metadata = pickle.load(f)
 
             logger.info(
-                "FAISS index loaded — %d vectors", _faiss_index.ntotal
+                "FAISS index loaded — %d vectors in %.2fs", _faiss_index.ntotal, time.perf_counter() - t0
             )
         except HTTPException:
             raise
@@ -86,9 +88,10 @@ def _get_embedder():
         try:
             from sentence_transformers import SentenceTransformer  # noqa: PLC0415
 
+            t0 = time.perf_counter()
             logger.info("Loading embedding model: %s", EMBEDDING_MODEL)
             _embedder = SentenceTransformer(EMBEDDING_MODEL)
-            logger.info("Embedding model ready.")
+            logger.info("Embedding model ready in %.2fs.", time.perf_counter() - t0)
         except Exception as exc:
             logger.error("Failed to load embedding model: %s", exc)
             raise HTTPException(
@@ -129,6 +132,7 @@ def search_evidence(query: str, top_k: int = 5) -> list[dict]:
     index, metadata = _get_index()
     embedder = _get_embedder()
 
+    t0 = time.perf_counter()
     logger.info("Searching evidence for query (%d chars)...", len(query))
 
     # Embed + normalise query
@@ -160,5 +164,5 @@ def search_evidence(query: str, top_k: int = 5) -> list[dict]:
             "date": meta.get("date", ""),
         })
 
-    logger.info("Evidence search complete — %d results returned.", len(results))
+    logger.info("Evidence search complete — %d results in %.3fs.", len(results), time.perf_counter() - t0)
     return results

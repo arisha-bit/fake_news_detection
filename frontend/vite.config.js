@@ -10,6 +10,12 @@ export default defineConfig({
         target: 'http://localhost:8000',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, '')
+      },
+      // Proxy /static/ to the backend so Grad-CAM heatmaps are served
+      // from FastAPI's StaticFiles mount during development
+      '/static': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
       }
     }
   }

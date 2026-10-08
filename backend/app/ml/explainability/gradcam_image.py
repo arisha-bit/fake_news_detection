@@ -1,29 +1,28 @@
 """
 Grad-CAM explainability for ResNet18 image classification.
 
-Model is loaded lazily on first call — not at module import time.
-This prevents crashes when best_image_model.pth is missing at startup.
+Reuses the shared ResNet18 singleton from predict_image.py.
+Does NOT load a second copy of the model weights.
+
+Target layer: model.layer4[-1]
+  - The last BasicBlock of ResNet18's 4th residual stage.
+  - Produces 7×7 spatial feature maps — the standard and correct
+    Grad-CAM target for ResNet18.
 """
 
 import logging
+import time
 from pathlib import Path
-from typing import Optional
 
 import torch
-import torch.nn as nn
 from PIL import Image
 from torchvision import transforms
-from torchvision.models import resnet18
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Paths
+# Config — must match predict_image.py
 # ---------------------------------------------------------------------------
-
-BASE_DIR = Path(__file__).resolve().parent.parent
-
-MODEL_PATH = BASE_DIR / "saved_models" / "best_image_model.pth"
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -38,31 +37,11 @@ IMAGE_TRANSFORM = transforms.Compose([
     ),
 ])
 
-# ---------------------------------------------------------------------------
-# Lazy singleton
-# ---------------------------------------------------------------------------
 
-_model: Optional[nn.Module] = None
-
-
-def _get_model() -> nn.Module:
-    """Load and cache the ResNet18 model. Raises on missing weights."""
-    global _model
-    if _model is None:
-        if not MODEL_PATH.exists():
-            raise FileNotFoundError(
-                f"ResNet18 weights not found at {MODEL_PATH}. "
-                "Ensure best_image_model.pth is present."
-            )
-        logger.info("Loading ResNet18 for Grad-CAM from %s", MODEL_PATH)
-        m = resnet18(weights=None)
-        m.fc = nn.Linear(m.fc.in_features, 2)
-        m.load_state_dict(torch.load(str(MODEL_PATH), map_location=DEVICE))
-        m = m.to(DEVICE)
-        m.eval()
-        _model = m
-        logger.info("ResNet18 Grad-CAM model loaded.")
-    return _model
+def _get_model():
+    """Delegate to the shared singleton in predict_image — no double load."""
+    from app.ml.inference.predict_image import _get_model as _shared_get_model
+    return _shared_get_model()
 
 
 # ---------------------------------------------------------------------------
@@ -73,9 +52,13 @@ def generate_gradcam(image_path: str, output_path: str) -> dict:
     """
     Generate a Grad-CAM heatmap overlay for the given image.
 
+    Uses the shared ResNet18 singleton (loaded once, reused here).
+    Targets model.layer4[-1] — correct for ResNet18.
+
     Args:
         image_path:  Path to the input image file.
         output_path: Path where the heatmap overlay PNG is saved.
+                     Parent directory must exist.
 
     Returns:
         {
@@ -86,43 +69,48 @@ def generate_gradcam(image_path: str, output_path: str) -> dict:
 
     Raises:
         FileNotFoundError — model weights missing.
-        Exception — image read / inference failure.
+        ImportError       — pytorch_grad_cam not installed.
+        Exception         — image read / inference failure.
     """
     import numpy as np
     from pytorch_grad_cam import GradCAM
     from pytorch_grad_cam.utils.image import show_cam_on_image
     from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 
+    t0 = time.perf_counter()
     model = _get_model()
 
-    # Load image
+    # Load and preprocess image
     image = Image.open(image_path).convert("RGB")
     image_resized = image.resize((224, 224))
-
     input_tensor = IMAGE_TRANSFORM(image).unsqueeze(0).to(DEVICE)
 
-    # Forward pass for prediction
+    # Forward pass for prediction (no grad needed here)
     with torch.no_grad():
         outputs = model(input_tensor)
         probabilities = torch.softmax(outputs, dim=1)
         predicted_class = torch.argmax(probabilities, dim=1).item()
         confidence = probabilities[0, predicted_class].item()
 
-    # Grad-CAM — must run with grad enabled
+    # Grad-CAM — runs a second forward+backward with gradients enabled
+    # target_layer = model.layer4[-1] is the standard ResNet18 Grad-CAM target
     target_layer = model.layer4[-1]
     cam = GradCAM(model=model, target_layers=[target_layer])
     targets = [ClassifierOutputTarget(predicted_class)]
     grayscale_cam = cam(input_tensor=input_tensor, targets=targets)[0]
 
-    # Overlay heatmap on resized image
-    rgb_image = np.array(image_resized).astype(np.float32) / 255.0
+    # Overlay heatmap on the resized RGB image
+    rgb_image = numpy_from_pil(image_resized)
     visualization = show_cam_on_image(rgb_image, grayscale_cam, use_rgb=True)
 
+    # Save PNG
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     Image.fromarray(visualization).save(output_path)
 
+    elapsed = time.perf_counter() - t0
     logger.info(
-        "Grad-CAM generated: %s → %s (prediction=%s, conf=%.4f)",
-        image_path, output_path, CLASS_NAMES[predicted_class], confidence,
+        "Grad-CAM generated in %.3fs: %s → %s (prediction=%s, conf=%.4f)",
+        elapsed, image_path, output_path, CLASS_NAMES[predicted_class], confidence,
     )
 
     return {
@@ -130,3 +118,9 @@ def generate_gradcam(image_path: str, output_path: str) -> dict:
         "confidence": round(confidence, 4),
         "heatmap_path": output_path,
     }
+
+
+def numpy_from_pil(pil_image) -> "np.ndarray":
+    """Convert PIL image to float32 numpy array in [0, 1] range."""
+    import numpy as np
+    return np.array(pil_image).astype(np.float32) / 255.0

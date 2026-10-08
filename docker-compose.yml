@@ -32,6 +32,7 @@ services:
       - uploads_data:/app/uploads
       - faiss_index:/app/app/ml/embeddings/index
       - clip_index:/app/app/ml/clip/index
+      - static_data:/app/static
     depends_on:
       db:
         condition: service_healthy
@@ -56,3 +57,4 @@ volumes:
   uploads_data:
   faiss_index:
   clip_index:
+  static_data:

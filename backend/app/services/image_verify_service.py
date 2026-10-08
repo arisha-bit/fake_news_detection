@@ -10,7 +10,6 @@ Each branch runs independently. If one fails it degrades gracefully
 (returns None for that branch) rather than failing the whole request.
 
 ResNet18 is the ONLY image classifier used here.
-Do NOT use EfficientNetB0 or image_classifier.pt.
 
 Final verdict logic:
   - Both FAKE → LIKELY FAKE
@@ -21,6 +20,7 @@ Final verdict logic:
 """
 
 import logging
+import time
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -36,11 +36,13 @@ def run_ocr_branch(image_path: str, model_choice: str = "logistic") -> dict:
     Returns:
         {ocr_text, text_prediction, text_confidence}
     """
+    t0 = time.perf_counter()
     try:
         from app.services.ocr_service import extract_text_from_image
         from app.api.prediction import _run_model
 
         ocr_text = extract_text_from_image(image_path)
+        logger.info("OCR branch: extracted %d chars in %.3fs", len(ocr_text or ""), time.perf_counter() - t0)
 
         if not ocr_text or len(ocr_text.strip()) < 20:
             logger.info(
@@ -55,9 +57,10 @@ def run_ocr_branch(image_path: str, model_choice: str = "logistic") -> dict:
 
         result = _run_model(model_choice, ocr_text)
         logger.info(
-            "OCR branch: %s (%.2f%%)",
+            "OCR branch: %s (%.2f%%) total=%.3fs",
             result["prediction"],
             result["confidence"] * 100,
+            time.perf_counter() - t0,
         )
         return {
             "ocr_text": ocr_text,
@@ -77,12 +80,14 @@ def run_image_classification_branch(image_path: str) -> dict:
     """
     Run ResNet18 image classifier on the image.
 
-    Uses best_image_model.pth via the existing predict_image inference module.
+    Uses best_image_model.pth via the shared predict_image inference module.
     Returns None-filled dict if model not available.
 
     Returns:
         {image_prediction, image_confidence, image_class_probabilities}
+        where image_class_probabilities contains BOTH "FAKE" and "REAL" probabilities.
     """
+    t0 = time.perf_counter()
     try:
         from app.ml.inference.predict_image import predict_image
 
@@ -94,16 +99,25 @@ def run_image_classification_branch(image_path: str) -> dict:
 
         prediction = result.get("prediction", "UNKNOWN")
 
+        # Use both-class probabilities from the updated predict_image
+        probabilities = result.get("probabilities", {})
+        if not probabilities:
+            # Fallback: construct from confidence alone (old API compat)
+            other_conf = round(1.0 - confidence, 4)
+            other_class = "REAL" if prediction == "FAKE" else "FAKE"
+            probabilities = {
+                prediction: round(confidence, 4),
+                other_class: other_conf,
+            }
+
         logger.info(
-            "ResNet18 branch: %s (%.2f%%)", prediction, confidence * 100
+            "ResNet18 branch: %s (%.2f%%) in %.3fs", prediction, confidence * 100, time.perf_counter() - t0
         )
 
         return {
             "image_prediction": prediction,
             "image_confidence": round(confidence, 4),
-            "image_class_probabilities": {
-                prediction: round(confidence, 4),
-            },
+            "image_class_probabilities": probabilities,
         }
     except Exception as exc:
         logger.warning(
@@ -120,21 +134,17 @@ def run_clip_branch(image_path: str, top_k: int = 5) -> dict:
     """
     Run CLIP reverse image search against the FAISS index.
 
-    CLIP similarity results represent semantic/visual similarity to indexed
-    news articles. They are retrieval evidence — NOT proof of image reuse
-    or misinformation on their own.
-
     Returns:
         {similar_articles, clip_reuse_detected}
     """
+    t0 = time.perf_counter()
     try:
         from app.services.image_service import reverse_image_search
 
         results, reuse = reverse_image_search(image_path, top_k=top_k)
         logger.info(
-            "CLIP branch: %d similar articles found, high_similarity=%s",
-            len(results),
-            reuse,
+            "CLIP branch: %d similar articles, high_similarity=%s in %.3fs",
+            len(results), reuse, time.perf_counter() - t0,
         )
         return {
             "similar_articles": results,
@@ -148,6 +158,105 @@ def run_clip_branch(image_path: str, top_k: int = 5) -> dict:
         }
 
 
+def run_gradcam_branch(image_path: str, output_path: str) -> dict:
+    """
+    Generate Grad-CAM heatmap for the image using the shared ResNet18 model.
+
+    Runs AFTER image classification to reuse already-loaded model.
+    Failures are non-fatal — returns None fields so the rest of the response
+    is unaffected.
+
+    Args:
+        image_path:  Path to the source image.
+        output_path: Disk path where the PNG will be saved (e.g. "static/heatmaps/abc.png").
+                     Must be under the "static/" directory so it can be served.
+
+    Returns:
+        {
+            "gradcam_prediction": str | None,
+            "gradcam_confidence": float | None,
+            "heatmap_path": str | None,       # disk path
+            "heatmap_url": str | None,        # URL path like /static/heatmaps/abc.png
+        }
+    """
+    t0 = time.perf_counter()
+    try:
+        from app.ml.explainability.gradcam_image import generate_gradcam
+
+        result = generate_gradcam(image_path, output_path)
+
+        # Build the URL: output_path is "static/heatmaps/<uuid>.png"
+        # URL should be "/static/heatmaps/<uuid>.png"
+        heatmap_url = "/" + output_path.replace("\\", "/").lstrip("/")
+
+        logger.info(
+            "Grad-CAM branch: %s (%.2f) in %.3fs, url=%s",
+            result["prediction"], result["confidence"],
+            time.perf_counter() - t0, heatmap_url,
+        )
+
+        return {
+            "gradcam_prediction": result["prediction"],
+            "gradcam_confidence": result["confidence"],
+            "heatmap_path": result["heatmap_path"],
+            "heatmap_url": heatmap_url,
+        }
+
+    except FileNotFoundError as exc:
+        logger.warning("Grad-CAM skipped — model weights missing: %s", exc)
+        return {"gradcam_prediction": None, "gradcam_confidence": None, "heatmap_path": None, "heatmap_url": None}
+    except ImportError as exc:
+        logger.warning("Grad-CAM skipped — pytorch_grad_cam not installed: %s", exc)
+        return {"gradcam_prediction": None, "gradcam_confidence": None, "heatmap_path": None, "heatmap_url": None}
+    except Exception as exc:
+        logger.warning("Grad-CAM branch failed (non-fatal): %s", exc, exc_info=True)
+        return {"gradcam_prediction": None, "gradcam_confidence": None, "heatmap_path": None, "heatmap_url": None}
+
+
+def run_lime_branch(text: str, model_choice: str) -> dict:
+    """
+    Run LIME explanation for lstm or bert models on OCR-extracted text.
+
+    SHAP is used for logistic regression (handled in prediction.py).
+    LIME is used here for lstm and bert when OCR text is available.
+
+    Returns:
+        {
+            "lime_prediction": str | None,
+            "lime_confidence": float | None,
+            "lime_explanations": list | None,
+        }
+    """
+    if not text or len(text.strip()) < 20:
+        return {"lime_prediction": None, "lime_confidence": None, "lime_explanations": None}
+
+    t0 = time.perf_counter()
+    try:
+        if model_choice == "lstm":
+            from app.ml.explainability.lime_lstm import explain_lstm
+            result = explain_lstm(text, num_features=10)
+        elif model_choice == "bert":
+            from app.ml.explainability.lime_bert import explain_bert
+            result = explain_bert(text, num_features=10)
+        else:
+            # logistic uses SHAP, not LIME
+            return {"lime_prediction": None, "lime_confidence": None, "lime_explanations": None}
+
+        logger.info(
+            "LIME branch (%s): %s (%.2f) in %.3fs",
+            model_choice, result["prediction"], result["confidence"],
+            time.perf_counter() - t0,
+        )
+        return {
+            "lime_prediction": result["prediction"],
+            "lime_confidence": result["confidence"],
+            "lime_explanations": result.get("explanations", []),
+        }
+    except Exception as exc:
+        logger.warning("LIME branch failed (non-fatal, model=%s): %s", model_choice, exc, exc_info=True)
+        return {"lime_prediction": None, "lime_confidence": None, "lime_explanations": None}
+
+
 def compute_verdict(
     text_prediction: Optional[str],
     image_prediction: Optional[str],
@@ -155,9 +264,6 @@ def compute_verdict(
 ) -> tuple[str, list[str]]:
     """
     Combine branch results into a cautious overall verdict and reasoning list.
-
-    Reasoning language is calibrated to reflect actual model evidence
-    without making claims stronger than the evidence supports.
 
     Returns:
         (verdict_string, [reasoning_sentence, ...])

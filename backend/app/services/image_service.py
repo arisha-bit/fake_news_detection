@@ -8,6 +8,7 @@ returns an empty result set instead of breaking verification flows.
 
 import logging
 import pickle
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -37,11 +38,12 @@ def _get_clip():
         try:
             from transformers import CLIPModel, CLIPProcessor  # noqa: PLC0415
 
+            t0 = time.perf_counter()
             logger.info("Loading CLIP model: %s", CLIP_MODEL)
             _clip_processor = CLIPProcessor.from_pretrained(CLIP_MODEL)
             _clip_model = CLIPModel.from_pretrained(CLIP_MODEL)
             _clip_model.eval()
-            logger.info("CLIP model ready.")
+            logger.info("CLIP model ready in %.2fs.", time.perf_counter() - t0)
         except Exception as exc:
             logger.error("Failed to load CLIP model: %s", exc)
             raise HTTPException(
@@ -68,11 +70,12 @@ def _get_index():
         try:
             import faiss  # noqa: PLC0415
 
+            t0 = time.perf_counter()
             logger.info("Loading CLIP FAISS index from %s", FAISS_INDEX_PATH)
             _faiss_index = faiss.read_index(str(FAISS_INDEX_PATH))
             with open(METADATA_PATH, "rb") as f:
                 _metadata = pickle.load(f)
-            logger.info("CLIP FAISS index loaded — %d vectors", _faiss_index.ntotal)
+            logger.info("CLIP FAISS index loaded — %d vectors in %.2fs", _faiss_index.ntotal, time.perf_counter() - t0)
         except HTTPException:
             raise
         except Exception as exc:
