@@ -43,20 +43,21 @@ export default function UploadPage() {
     try {
       const formData = new FormData()
       formData.append('file', file)
-      const res = await api.post('/predict/image', formData, {
+      formData.append('model', 'logistic')  // Default text model
+      const res = await api.post('/upload/image', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
         timeout: 120000,
       })
       setResult(res.data)
     } catch (err) {
-      setError(err.response?.data?.detail || 'Image classification failed. Please try again.')
+      setError(err.response?.data?.detail || 'Image classification and analysis failed. Please try again.')
     } finally {
       setLoading(false)
     }
   }
 
-  const isFake = result?.prediction === 'FAKE'
-  const confidencePct = result ? Math.round((result.confidence || 0) * 100) : 0
+  const isFake = result?.image_prediction === 'FAKE'
+  const confidencePct = result ? Math.round((result.image_confidence || 0) * 100) : 0
 
   return (
     <div className="max-w-2xl mx-auto flex flex-col gap-6">
@@ -150,29 +151,55 @@ export default function UploadPage() {
             </div>
           </div>
 
-          {/* Class Probabilities */}
-          {result.class_probabilities && Object.keys(result.class_probabilities).length > 0 && (
+          {/* Text Explainability (XAI) */}
+          {result.xai && (result.xai.explanations || []).length > 0 && (
             <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-              <h2 className="text-sm font-semibold text-slate-700 mb-3">Model Class Probabilities</h2>
-              <div className="grid grid-cols-2 gap-4">
-                {Object.entries(result.class_probabilities).map(([cls, prob]) => {
-                  const pct = Math.round((prob || 0) * 100)
-                  const isFakeClass = cls === 'FAKE'
-                  return (
-                    <div key={cls} className="bg-slate-50 rounded-xl p-3 border border-slate-100">
-                      <div className="flex justify-between items-center mb-1">
-                        <span className={`text-xs font-bold ${isFakeClass ? 'text-red-600' : 'text-emerald-700'}`}>{cls}</span>
-                        <span className="text-xs font-semibold text-slate-600">{pct}%</span>
-                      </div>
-                      <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                        <div
-                          className={`h-1.5 rounded-full ${isFakeClass ? 'bg-red-400' : 'bg-emerald-400'}`}
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                    </div>
-                  )
-                })}
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h2 className="text-sm font-semibold text-slate-800">{result.xai.method?.toUpperCase()} Text Explainability</h2>
+                  <p className="text-xs text-slate-400">Model: {result.xai.model}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-4">
+                <div>
+                  <h3 className="text-xs font-bold text-slate-700 mb-2">Words Pushing Toward REAL:</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {(result.xai.real_features || []).slice(0, 5).map((word, i) => (
+                      <span key={i} className="bg-emerald-50 text-emerald-700 px-2 py-1 rounded text-xs border border-emerald-100">
+                        {word}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <h3 className="text-xs font-bold text-slate-700 mb-2">Words Pushing Toward FAKE:</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {(result.xai.fake_features || []).slice(0, 5).map((word, i) => (
+                      <span key={i} className="bg-red-50 text-red-700 px-2 py-1 rounded text-xs border border-red-100">
+                        {word}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Keywords & Clickbait */}
+          {result.keywords && result.keywords.length > 0 && (
+            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+              <h2 className="text-sm font-semibold text-slate-800 mb-3">Extracted Keywords</h2>
+              <div className="flex flex-wrap gap-2">
+                {result.keywords.map((kw, i) => (
+                  <span key={i} className="bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded text-xs border border-indigo-100 font-medium">
+                    {kw}
+                  </span>
+                ))}
+              </div>
+              <div className="mt-3 pt-3 border-t border-slate-100">
+                <p className="text-xs text-slate-600">
+                  Clickbait Score: <span className="font-bold">{result.clickbait_score || 0}%</span>
+                </p>
               </div>
             </div>
           )}

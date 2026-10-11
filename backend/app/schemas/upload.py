@@ -13,16 +13,34 @@ from pydantic import BaseModel
 class UploadResponse(BaseModel):
     """
     Returned after a successful image upload + prediction.
-    Mirrors PredictionResponse but includes OCR-specific fields.
+    Includes image classification, Grad-CAM heatmap, OCR text, 
+    text prediction, and explainability data (keywords, clickbait, XAI).
     """
 
-    prediction: str
-    confidence: float
+    # Image classification
+    image_prediction: str  # "FAKE" | "REAL"
+    image_confidence: float
+    
+    # Grad-CAM explainability (non-fatal if unavailable)
+    heatmap_url: Optional[str] = None
+    
+    # OCR extraction
     extracted_text: str
+    
+    # Text prediction (on OCR text)
+    text_prediction: str  # "FAKE" | "REAL"
+    text_confidence: float
+    
+    # Text explainability
     keywords: list[str]
-    clickbait_score: int
+    clickbait_score: float
     explanation: str
-    prediction_id: UUID
+    
+    # XAI (model explainability) — LIME or SHAP
+    xai: Optional[dict] = None
+    
+    # Database references
+    prediction_id: UUID  # Text prediction record
     uploaded_file_id: UUID
 
 
