@@ -54,9 +54,17 @@ def build():
     # 1. Load dataset
     logger.info("Loading dataset from %s", DATASET_PATH)
     df = pd.read_csv(DATASET_PATH)
+    initial_rows = len(df)
     df = df.dropna(subset=["title", "content"])
+    dropped_rows = initial_rows - len(df)
+    if dropped_rows > 0:
+        logger.warning(
+            "Dropped %d rows with missing title or content (%.1f%% of data)",
+            dropped_rows,
+            100.0 * dropped_rows / initial_rows if initial_rows > 0 else 0,
+        )
     df = df.head(MAX_ARTICLES).reset_index(drop=True)
-    logger.info("Loaded %d articles", len(df))
+    logger.info("Loaded %d articles for indexing", len(df))
 
     # 2. Build metadata store
     metadata = []

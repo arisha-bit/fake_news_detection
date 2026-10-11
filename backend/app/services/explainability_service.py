@@ -51,3 +51,54 @@ def generate_explanation(prediction: str, score: int) -> str:
             "The article uses neutral language "
             "and resembles authentic news reporting."
         )
+
+
+def generate_model_explanation(text: str, model_choice: str = "logistic", method: str = "shap", top_k: int = 10) -> dict:
+    """
+    Generate SHAP or LIME explanation for any of the three models:
+    - logistic
+    - lstm
+    - bert
+    """
+    model_choice = model_choice.lower()
+    method = method.lower()
+
+    if model_choice not in ("logistic", "lstm", "bert"):
+        raise ValueError(f"Unsupported model: {model_choice}. Choose logistic, lstm, or bert.")
+
+    if method not in ("shap", "lime"):
+        raise ValueError(f"Unsupported method: {method}. Choose shap or lime.")
+
+    if model_choice == "logistic":
+        if method == "shap":
+            from app.ml.explainability.shap_explainer import explain_prediction
+            res = explain_prediction(text, top_k=top_k)
+        else:
+            from app.ml.explainability.lime_logistic import explain_logistic_lime
+            res = explain_logistic_lime(text, num_features=top_k)
+
+    elif model_choice == "lstm":
+        if method == "shap":
+            from app.ml.explainability.shap_lstm import explain_lstm_shap
+            res = explain_lstm_shap(text, top_k=top_k)
+        else:
+            from app.ml.explainability.lime_lstm import explain_lstm
+            res = explain_lstm(text, num_features=top_k)
+
+    elif model_choice == "bert":
+        if method == "shap":
+            from app.ml.explainability.shap_bert import explain_bert_shap
+            res = explain_bert_shap(text, top_k=top_k)
+        else:
+            from app.ml.explainability.lime_bert import explain_bert
+            res = explain_bert(text, num_features=top_k)
+
+    return {
+        "model": model_choice,
+        "method": method,
+        "prediction": res.get("prediction", "UNKNOWN"),
+        "confidence": res.get("confidence", 0.0),
+        "explanations": res.get("explanations", []),
+        "fake_features": res.get("fake_features", []),
+        "real_features": res.get("real_features", []),
+    }

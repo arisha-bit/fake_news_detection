@@ -15,13 +15,12 @@ A production-grade fake-news verification system supporting both **text** and **
 | OCR text extraction | EasyOCR — feeds extracted text into the text pipeline |
 | Reverse image search | CLIP (ViT-B/32) + FAISS |
 | Text evidence retrieval | Sentence Transformers (all-MiniLM-L6-v2) + FAISS |
-| SHAP explanations | Logistic Regression — word-level feature contributions |
-| LIME explanations | LSTM and DistilBERT — local perturbation-based explanations |
+| SHAP explanations | All 3 text models — word-level feature contributions |
+| LIME explanations | All 3 text models — local perturbation-based explanations |
 | Grad-CAM heatmap | ResNet18 `layer4[-1]` — visual explanation of image prediction |
 | Claim extraction | spaCy NER + sentence segmentation → per-claim verification |
 | Knowledge graph | spaCy NER + co-occurrence edges → entity relationship map |
 | Propaganda detection | Rule-based, 10 recognised techniques |
-| Source credibility | Curated trust database (35+ domains) |
 | Analytics dashboard | Per-user statistics, monthly trends, keyword frequency |
 | Authentication | JWT-based login / registration |
 | Prediction history | Full log with model, confidence, and timestamp |
@@ -83,7 +82,6 @@ Text → POST /claims/extract     → per-claim predictions
 Text → POST /evidence/search    → FAISS semantic evidence
 Text → POST /knowledge-graph/extract → entity graph
 Text → POST /propaganda/analyse → propaganda technique detection
-URL  → POST /credibility/check  → domain trust score
 ```
 
 ### Image Pipeline
@@ -111,7 +109,10 @@ Image → POST /upload/image → OCR → text prediction → ResultPage
 | Model | Method | What it produces |
 |-------|--------|-----------------|
 | Logistic Regression | SHAP LinearExplainer | Word → FAKE/REAL contribution |
+| Logistic Regression | LIME LimeTextExplainer | Top influential words |
+| LSTM | SHAP PartitionExplainer | Word → FAKE/REAL contribution |
 | LSTM | LIME LimeTextExplainer | Top influential words |
+| DistilBERT | SHAP Explainer | Word → FAKE/REAL contribution |
 | DistilBERT | LIME LimeTextExplainer | Top influential words |
 | ResNet18 | Grad-CAM (layer4[-1]) | Heatmap PNG at `/static/heatmaps/` |
 

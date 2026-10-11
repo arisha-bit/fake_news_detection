@@ -20,6 +20,8 @@ from app.schemas.prediction import (
     PredictionHistoryResponse,
     XAIResult,
     SHAPExplanation,
+    ExplanationRequest,
+    ExplanationResponse,
 )
 from app.services.prediction_service import save_prediction
 from app.services.explainability_service import (
@@ -190,3 +192,32 @@ def ensemble_prediction(payload: EnsembleRequest):
             "bert": bert,
         },
     }
+
+
+@router.post("/explain", response_model=ExplanationResponse)
+def explain_model_prediction(
+    payload: ExplanationRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Generate on-demand SHAP or LIME explanations for any of the 3 text models:
+    logistic, lstm, or bert.
+    """
+    try:
+        from app.services.explainability_service import generate_model_explanation
+        res = generate_model_explanation(
+            text=payload.text,
+            model_choice=payload.model,
+            method=payload.method,
+            top_k=payload.top_k,
+        )
+        return ExplanationResponse(**res)
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as exc:
+        logger.error(
+            "Explanation failed — model=%s, method=%s, error=%s",
+            payload.model, payload.method, exc, exc_info=True
+        )
+        raise HTTPException(status_code=500, detail=f"Explanation generation failed: {str(exc)}")
+

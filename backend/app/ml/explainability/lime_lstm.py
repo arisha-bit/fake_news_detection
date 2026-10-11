@@ -38,22 +38,54 @@ explainer = LimeTextExplainer(
 # --------------------------------------------------
 
 def predict_proba_for_lime(texts):
-
+    import logging
+    
+    logger = logging.getLogger(__name__)
     model, tokenizer = load_lstm()
 
-    sequences = tokenizer.texts_to_sequences(
-        texts
-    )
+    # Ensure texts are strings
+    texts = [str(t).strip() for t in texts]
+    
+    # Check for empty inputs
+    if not texts or all(len(t) == 0 for t in texts):
+        logger.warning("Empty text list passed to LSTM LIME prediction")
+        # Return neutral probabilities
+        return np.array([[0.5, 0.5]] * len(texts))
+
+    sequences = tokenizer.texts_to_sequences(texts)
+    
+    # Check for empty sequences (texts not in vocabulary)
+    if not sequences or all(len(seq) == 0 for seq in sequences):
+        logger.warning("Tokenizer produced empty sequences for LSTM LIME")
+        # Return neutral probabilities
+        return np.array([[0.5, 0.5]] * len(texts))
 
     padded = pad_sequences(
         sequences,
         maxlen=500
     )
 
+    # Validate padded shape
+    if padded.size == 0:
+        logger.warning("Padded sequences are empty")
+        return np.array([[0.5, 0.5]] * len(texts))
+
     probabilities = model.predict(
         padded,
         verbose=0
     ).reshape(-1)
+    
+    # Validate probabilities
+    if len(probabilities) != len(texts):
+        logger.warning(
+            "Probability count mismatch: %d predictions for %d texts",
+            len(probabilities),
+            len(texts),
+        )
+    
+    # Handle NaN or invalid probabilities
+    probabilities = np.nan_to_num(probabilities, nan=0.5, posinf=0.999, neginf=0.001)
+    probabilities = np.clip(probabilities, 0.0, 1.0)
 
     # Column 0 = FAKE
     # Column 1 = REAL
@@ -134,13 +166,7 @@ def explain_lstm(
 
         explanations.append({
             "word": clean_word,
-
-            # Keep the SIGNED impact
-            "impact": round(
-                float(impact),
-                4
-            ),
-
+            "impact": round(abs(float(impact)), 4),
             "direction": (
                 "REAL"
                 if impact > 0
@@ -148,13 +174,14 @@ def explain_lstm(
             )
         })
 
+    explanations.sort(key=lambda x: x["impact"], reverse=True)
+    fake_features = [e["word"] for e in explanations if e["direction"] == "FAKE"]
+    real_features = [e["word"] for e in explanations if e["direction"] == "REAL"]
+
     return {
         "prediction": prediction,
-
-        "confidence": round(
-            float(confidence),
-            4
-        ),
-
-        "explanations": explanations
+        "confidence": round(float(confidence), 4),
+        "explanations": explanations[:num_features],
+        "fake_features": fake_features,
+        "real_features": real_features,
     }

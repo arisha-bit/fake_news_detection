@@ -17,16 +17,31 @@ class SHAPExplanation(BaseModel):
 
 
 class XAIResult(BaseModel):
-    """
-    XAI explanation returned alongside prediction.
-    Only populated when model='logistic' (SHAP explains Logistic Regression only).
-    LSTM and DistilBERT return xai=None.
-    """
     shap: Optional[SHAPExplanation] = None
+    lime: Optional[SHAPExplanation] = None
     keywords: list[str] = []
     clickbait: Optional[dict] = None
     explanation: str = ""
     model_explained: str = "logistic"
+    method_explained: str = "shap"
+
+
+class ExplanationRequest(BaseModel):
+    text: str
+    model: str = "logistic"  # "logistic" | "lstm" | "bert"
+    method: str = "shap"     # "shap" | "lime"
+    top_k: int = 10
+
+
+class ExplanationResponse(BaseModel):
+    model: str
+    method: str
+    prediction: str
+    confidence: float
+    explanations: list[SHAPFeature]
+    fake_features: list[str] = []
+    real_features: list[str] = []
+
 
 
 class PredictionRequest(BaseModel):

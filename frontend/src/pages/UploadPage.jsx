@@ -1,24 +1,29 @@
-import React, { useState } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { uploadImage } from '../api/upload'
-
-const MODELS = [
-  { value: 'logistic', label: 'Logistic Regression' },
-  { value: 'lstm', label: 'LSTM' },
-  { value: 'bert', label: 'DistilBERT' },
-]
+import api from '../api/client'
 
 export default function UploadPage() {
   const navigate = useNavigate()
   const [file, setFile] = useState(null)
-  const [model, setModel] = useState('logistic')
+  const [preview, setPreview] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [result, setResult] = useState(null)
   const [drag, setDrag] = useState(false)
+  const inputRef = useRef()
+
+  useEffect(() => {
+    return () => {
+      if (preview) URL.revokeObjectURL(preview)
+    }
+  }, [preview])
 
   const handleFile = (f) => {
     if (!f) return
+    if (preview) URL.revokeObjectURL(preview)
     setFile(f)
+    setPreview(URL.createObjectURL(f))
+    setResult(null)
     setError('')
   }
 
@@ -34,38 +39,36 @@ export default function UploadPage() {
     if (!file) return
     setError('')
     setLoading(true)
+    setResult(null)
     try {
       const formData = new FormData()
       formData.append('file', file)
-      const res = await uploadImage(formData, model)
-      navigate('/result', {
-        state: {
-          result: {
-            ...res.data,
-            model,
-            text: res.data.extracted_text,
-            source: 'Image OCR',
-          },
-        },
+      const res = await api.post('/predict/image', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 120000,
       })
+      setResult(res.data)
     } catch (err) {
-      setError(err.response?.data?.detail || 'Upload failed. Please try again.')
+      setError(err.response?.data?.detail || 'Image classification failed. Please try again.')
     } finally {
       setLoading(false)
     }
   }
 
+  const isFake = result?.prediction === 'FAKE'
+  const confidencePct = result ? Math.round((result.confidence || 0) * 100) : 0
+
   return (
-    <div className="max-w-xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-800">Upload Image</h1>
-        <p className="text-slate-400 text-sm mt-1">
-          Upload an image containing news text. OCR will extract the text and run fake-news detection.
+    <div className="max-w-2xl mx-auto flex flex-col gap-6">
+      <div>
+        <h1 className="text-2xl font-bold text-slate-800">Image Classification & Explainability</h1>
+        <p className="text-slate-500 text-sm mt-1">
+          Upload an image to classify authenticity with ResNet18 and generate a Grad-CAM explanation heatmap.
         </p>
       </div>
 
       {error && (
-        <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-600 text-sm">
+        <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-600 text-sm">
           {error}
         </div>
       )}
@@ -79,72 +82,164 @@ export default function UploadPage() {
           onDragOver={(e) => { e.preventDefault(); setDrag(true) }}
           onDragLeave={() => setDrag(false)}
           onDrop={handleDrop}
-          onClick={() => document.getElementById('file-input').click()}
-          className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition ${
+          onClick={() => inputRef.current?.click()}
+          className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition ${
             drag
               ? 'border-indigo-400 bg-indigo-50'
               : 'border-slate-200 hover:border-indigo-300 hover:bg-slate-50'
           }`}
         >
           <input
-            id="file-input"
+            ref={inputRef}
             type="file"
             accept=".jpg,.jpeg,.png"
             className="hidden"
             onChange={(e) => handleFile(e.target.files[0])}
           />
-          {file ? (
-            <div>
-              <p className="text-indigo-600 font-medium text-sm">{file.name}</p>
-              <p className="text-slate-400 text-xs mt-1">{(file.size / 1024).toFixed(1)} KB</p>
+          {preview ? (
+            <div className="flex flex-col items-center gap-2">
+              <img src={preview} alt="Upload Preview" className="max-h-56 rounded-lg object-contain" />
+              <p className="text-xs text-slate-500 font-medium">{file?.name} ({(file.size / 1024).toFixed(1)} KB)</p>
             </div>
           ) : (
             <div>
-              <p className="text-2xl mb-2">🖼️</p>
-              <p className="text-slate-400 text-sm">Drop your image here or click to browse</p>
-              <p className="text-slate-300 text-xs mt-1">JPG, JPEG, PNG — max 10 MB</p>
+              <p className="text-3xl mb-2">🖼️</p>
+              <p className="text-slate-600 font-medium text-sm">Drop your image here or click to browse</p>
+              <p className="text-slate-400 text-xs mt-1">Supported: JPG, JPEG, PNG — max 10 MB</p>
             </div>
           )}
-        </div>
-
-        {/* Model selector */}
-        <div>
-          <label className="block text-sm font-medium text-slate-600 mb-2">
-            Text detection model
-          </label>
-          <div className="grid grid-cols-3 gap-2">
-            {MODELS.map((m) => (
-              <button
-                key={m.value}
-                type="button"
-                onClick={() => setModel(m.value)}
-                className={`px-3 py-2 rounded-lg text-xs font-medium border transition ${
-                  model === m.value
-                    ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
-                    : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-200'
-                }`}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
         </div>
 
         <button
           type="submit"
           disabled={loading || !file}
-          className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-lg py-3 font-semibold text-sm text-white transition"
+          className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-xl py-3 font-semibold text-sm text-white transition flex items-center justify-center gap-2"
         >
           {loading ? (
-            <span className="flex items-center justify-center gap-2">
+            <>
               <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              Extracting & Analyzing...
-            </span>
+              Running ResNet18 & Grad-CAM...
+            </>
           ) : (
-            'Analyze Image'
+            'Classify Image & Explain'
           )}
         </button>
       </form>
+
+      {/* Result Section */}
+      {result && (
+        <div className="flex flex-col gap-5">
+          {/* Verdict Banner */}
+          <div className={`rounded-2xl p-6 border text-center ${
+            isFake ? 'bg-red-50 border-red-200' : 'bg-emerald-50 border-emerald-200'
+          }`}>
+            <span className="text-xs font-semibold tracking-wider uppercase text-slate-400 mb-1 block">
+              ResNet18 Image Classification
+            </span>
+            <div className={`text-4xl font-extrabold mb-1 tracking-tight ${isFake ? 'text-red-500' : 'text-emerald-600'}`}>
+              {isFake ? 'MANIPULATED / FAKE IMAGE' : 'AUTHENTIC / REAL IMAGE'}
+            </div>
+            <p className="text-slate-600 text-sm mt-1">
+              Model Confidence: <span className="font-bold">{confidencePct}%</span>
+            </p>
+            <div className="mt-4 h-2 bg-slate-200 rounded-full overflow-hidden">
+              <div
+                className={`h-2 rounded-full transition-all ${isFake ? 'bg-red-400' : 'bg-emerald-400'}`}
+                style={{ width: `${confidencePct}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Class Probabilities */}
+          {result.class_probabilities && Object.keys(result.class_probabilities).length > 0 && (
+            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+              <h2 className="text-sm font-semibold text-slate-700 mb-3">Model Class Probabilities</h2>
+              <div className="grid grid-cols-2 gap-4">
+                {Object.entries(result.class_probabilities).map(([cls, prob]) => {
+                  const pct = Math.round((prob || 0) * 100)
+                  const isFakeClass = cls === 'FAKE'
+                  return (
+                    <div key={cls} className="bg-slate-50 rounded-xl p-3 border border-slate-100">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className={`text-xs font-bold ${isFakeClass ? 'text-red-600' : 'text-emerald-700'}`}>{cls}</span>
+                        <span className="text-xs font-semibold text-slate-600">{pct}%</span>
+                      </div>
+                      <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                        <div
+                          className={`h-1.5 rounded-full ${isFakeClass ? 'bg-red-400' : 'bg-emerald-400'}`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Grad-CAM Heatmap Visualization */}
+          {result.heatmap_url ? (
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <h2 className="text-base font-bold text-slate-800">Grad-CAM Visual Explanation</h2>
+                  <p className="text-xs text-slate-400">ResNet18 · Target Layer: layer4[-1]</p>
+                </div>
+                <span className={`px-2.5 py-1 rounded-md text-xs font-bold ${
+                  isFake ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+                }`}>
+                  Explaining: {result.prediction}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+                The heatmap highlights regions in the image that strongly drove the classifier toward the{' '}
+                <span className="font-semibold">{result.prediction}</span> prediction. Warm colors (red/yellow) indicate maximum activation influence; cool colors (blue) indicate minimal influence.
+              </p>
+              <div className="flex justify-center bg-slate-50 rounded-xl p-2 border border-slate-100">
+                <img
+                  src={result.heatmap_url}
+                  alt="Grad-CAM heatmap"
+                  className="rounded-lg max-h-80 object-contain w-full"
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 text-xs text-slate-500">
+              Grad-CAM heatmap generation was unavailable for this image.
+            </div>
+          )}
+
+          {/* OCR Extracted Text (if >20 meaningful characters extracted) */}
+          {result.has_meaningful_text && result.ocr_text && (
+            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-sm font-semibold text-slate-800">Extracted Text (OCR Active)</h2>
+                {result.text_prediction && (
+                  <span className={`text-xs font-bold px-2 py-0.5 rounded border ${
+                    result.text_prediction === 'FAKE'
+                      ? 'bg-red-50 text-red-600 border-red-100'
+                      : 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                  }`}>
+                    Text: {result.text_prediction} ({Math.round((result.text_confidence || 0) * 100)}%)
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-600 bg-slate-50 rounded-lg p-3 border border-slate-100 leading-relaxed">
+                {result.ocr_text}
+              </p>
+              <div className="mt-3 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => navigate('/', { state: { initialText: result.ocr_text } })}
+                  className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 hover:underline"
+                >
+                  Analyze Extracted Text in Full NLP Pipeline →
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

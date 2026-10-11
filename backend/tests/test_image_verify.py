@@ -1,13 +1,10 @@
 """
-Tests for multimodal image verification (Parts 2 & 5).
+Tests for image endpoints:
+  POST /predict/image  — Image Upload (ResNet18 + Grad-CAM + OCR)
+  POST /verify/image   — Image Verify (ResNet18 + CLIP FAISS, NO Grad-CAM)
 
-Covers:
-- POST /predict/image returns classification result
-- POST /predict/image raises 503 when model not trained
-- POST /verify/image returns full multimodal response
-- POST /verify/image degrades gracefully when image model missing
-- Invalid file format rejected
-- compute_verdict logic unit tests
+Image Upload  → returns heatmap_url (Grad-CAM lives here)
+Image Verify  → returns similar_articles, NO heatmap / NO XAI explanations
 """
 
 import io
@@ -103,22 +100,22 @@ FAKE_GRADCAM = {
     "heatmap_url": "/static/heatmaps/test.png",
 }
 
-FAKE_LIME = {
-    "lime_prediction": None,
-    "lime_confidence": None,
-    "lime_explanations": None,
-}
-
 
 # ---------------------------------------------------------------------------
-# POST /predict/image
+# POST /predict/image  — IMAGE UPLOAD MODE
+# Expects: prediction, confidence, class_probabilities, heatmap_url, ocr_text
 # ---------------------------------------------------------------------------
 
 class TestImageClassification:
     def test_returns_classification_result(self, client, auth_override, db_override):
         with (
-            patch("app.api.image_predict.run_image_classification_branch", return_value=FAKE_IMG),
-            patch("app.api.image_predict.run_gradcam_branch", return_value=FAKE_GRADCAM),
+            patch("app.api.image_predict.run_image_classification_branch",
+                  return_value=FAKE_IMG),
+            patch("app.api.image_predict.run_gradcam_branch",
+                  return_value=FAKE_GRADCAM),
+            patch("app.api.image_predict.run_ocr_branch",
+                  return_value={"ocr_text": "", "text_prediction": None,
+                                "text_confidence": None}),
             patch("app.utils.file_utils.save_upload",
                   return_value=("abc.jpg", "test.jpg", "/tmp/abc.jpg")),
             patch("app.utils.file_utils.delete_temp_file"),
@@ -130,17 +127,24 @@ class TestImageClassification:
         assert data["prediction"] == "FAKE"
         assert data["confidence"] == 0.91
         assert "class_probabilities" in data
+        # Image Upload DOES return a Grad-CAM heatmap
         assert data.get("heatmap_url") == "/static/heatmaps/test.png"
 
-    def test_returns_classification_without_heatmap(self, client, auth_override, db_override):
-        """Prediction still works when Grad-CAM fails gracefully."""
+    def test_returns_classification_without_heatmap_when_gradcam_fails(
+        self, client, auth_override, db_override
+    ):
         gradcam_unavailable = {
             "gradcam_prediction": None, "gradcam_confidence": None,
             "heatmap_path": None, "heatmap_url": None,
         }
         with (
-            patch("app.api.image_predict.run_image_classification_branch", return_value=FAKE_IMG),
-            patch("app.api.image_predict.run_gradcam_branch", return_value=gradcam_unavailable),
+            patch("app.api.image_predict.run_image_classification_branch",
+                  return_value=FAKE_IMG),
+            patch("app.api.image_predict.run_gradcam_branch",
+                  return_value=gradcam_unavailable),
+            patch("app.api.image_predict.run_ocr_branch",
+                  return_value={"ocr_text": "", "text_prediction": None,
+                                "text_confidence": None}),
             patch("app.utils.file_utils.save_upload",
                   return_value=("abc.jpg", "test.jpg", "/tmp/abc.jpg")),
             patch("app.utils.file_utils.delete_temp_file"),
@@ -150,6 +154,7 @@ class TestImageClassification:
         assert response.status_code == 200
         data = response.json()
         assert data["prediction"] == "FAKE"
+        # heatmap_url is null when Grad-CAM fails — that's acceptable
         assert data.get("heatmap_url") is None
 
     def test_raises_503_when_model_not_trained(self, client, auth_override, db_override):
@@ -178,7 +183,9 @@ class TestImageClassification:
 
 
 # ---------------------------------------------------------------------------
-# POST /verify/image
+# POST /verify/image  — IMAGE VERIFY MODE
+# Expects: overall_verdict, text_prediction, image_prediction, similar_articles
+# Must NOT return: heatmap_url, Grad-CAM, SHAP/LIME explanations
 # ---------------------------------------------------------------------------
 
 class TestImageVerification:
@@ -190,8 +197,6 @@ class TestImageVerification:
             patch("app.api.image_predict.run_image_classification_branch",
                   return_value=FAKE_IMG),
             patch("app.api.image_predict.run_clip_branch", return_value=FAKE_CLIP),
-            patch("app.api.image_predict.run_gradcam_branch", return_value=FAKE_GRADCAM),
-            patch("app.api.image_predict.run_lime_branch", return_value=FAKE_LIME),
             patch("app.utils.file_utils.save_upload",
                   return_value=("abc.jpg", "test.jpg", "/tmp/abc.jpg")),
             patch("app.utils.file_utils.delete_temp_file"),
@@ -207,8 +212,30 @@ class TestImageVerification:
         assert "image_prediction" in data
         assert "similar_articles" in data
         assert "reasoning" in data
-        assert "xai" in data
-        assert data["xai"]["heatmap_url"] == "/static/heatmaps/test.png"
+
+    def test_image_verify_does_not_return_gradcam(
+        self, client, auth_override, db_override
+    ):
+        """
+        Image Verify must NOT include Grad-CAM / heatmap data.
+        xai must be null in the response.
+        """
+        with (
+            patch("app.api.image_predict.run_ocr_branch", return_value=FAKE_OCR),
+            patch("app.api.image_predict.run_image_classification_branch",
+                  return_value=FAKE_IMG),
+            patch("app.api.image_predict.run_clip_branch", return_value=FAKE_CLIP),
+            patch("app.utils.file_utils.save_upload",
+                  return_value=("abc.jpg", "test.jpg", "/tmp/abc.jpg")),
+            patch("app.utils.file_utils.delete_temp_file"),
+            patch("app.api.image_predict.save_prediction",
+                  return_value=MagicMock(id=uuid.uuid4())),
+        ):
+            response = client.post("/verify/image", files=[_fake_image()])
+
+        data = response.json()
+        # xai must be null — no Grad-CAM, no LIME in Image Verify mode
+        assert data.get("xai") is None
 
     def test_both_fake_gives_likely_fake_verdict(
         self, client, auth_override, db_override
@@ -218,8 +245,6 @@ class TestImageVerification:
             patch("app.api.image_predict.run_image_classification_branch",
                   return_value=FAKE_IMG),
             patch("app.api.image_predict.run_clip_branch", return_value=FAKE_CLIP),
-            patch("app.api.image_predict.run_gradcam_branch", return_value=FAKE_GRADCAM),
-            patch("app.api.image_predict.run_lime_branch", return_value=FAKE_LIME),
             patch("app.utils.file_utils.save_upload",
                   return_value=("abc.jpg", "test.jpg", "/tmp/abc.jpg")),
             patch("app.utils.file_utils.delete_temp_file"),
@@ -238,17 +263,11 @@ class TestImageVerification:
             "image_confidence": None,
             "image_class_probabilities": {},
         }
-        gradcam_unavailable = {
-            "gradcam_prediction": None, "gradcam_confidence": None,
-            "heatmap_path": None, "heatmap_url": None,
-        }
         with (
             patch("app.api.image_predict.run_ocr_branch", return_value=FAKE_OCR),
             patch("app.api.image_predict.run_image_classification_branch",
                   return_value=img_unavailable),
             patch("app.api.image_predict.run_clip_branch", return_value=FAKE_CLIP),
-            patch("app.api.image_predict.run_gradcam_branch", return_value=gradcam_unavailable),
-            patch("app.api.image_predict.run_lime_branch", return_value=FAKE_LIME),
             patch("app.utils.file_utils.save_upload",
                   return_value=("abc.jpg", "test.jpg", "/tmp/abc.jpg")),
             patch("app.utils.file_utils.delete_temp_file"),
@@ -257,11 +276,10 @@ class TestImageVerification:
         ):
             response = client.post("/verify/image", files=[_fake_image()])
 
-        # Should still return 200 — degrades gracefully
         assert response.status_code == 200
         data = response.json()
         assert data["image_prediction"] == "UNAVAILABLE"
-        assert data["xai"]["heatmap_url"] is None
+        assert data.get("xai") is None
 
 
 # ---------------------------------------------------------------------------

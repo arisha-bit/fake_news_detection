@@ -93,6 +93,8 @@ def explain_prediction(text: str, top_k: int = 10) -> dict:
 
     # Logistic Regression prediction
     prediction_int = model.predict(vector)[0]
+    probabilities = model.predict_proba(vector)[0]
+    confidence = float(probabilities[prediction_int])
 
     # SHAP values
     shap_values = explainer(vector)
@@ -112,13 +114,30 @@ def explain_prediction(text: str, top_k: int = 10) -> dict:
     feature_indices = vector.nonzero()[1]
 
     explanations = []
+    fake_features = []
+    real_features = []
     for idx in feature_indices:
+        # Bounds check: ensure idx is within SHAP values range
+        if idx < 0 or idx >= len(values):
+            logger.warning(
+                "Feature index %d out of range [0, %d); skipping",
+                idx,
+                len(values),
+            )
+            continue
+        
         impact = float(values[idx])
         # Positive SHAP → pushes toward REAL (class 1)
         # Negative SHAP → pushes toward FAKE (class 0)
         direction = "REAL" if impact > 0 else "FAKE"
+        word_str = str(feature_names[idx])
+        if direction == "REAL":
+            real_features.append(word_str)
+        else:
+            fake_features.append(word_str)
+
         explanations.append({
-            "word": str(feature_names[idx]),   # ensure plain Python str, not np.str_
+            "word": word_str,   # ensure plain Python str, not np.str_
             "impact": round(abs(impact), 4),
             "direction": direction,
         })
@@ -133,5 +152,9 @@ def explain_prediction(text: str, top_k: int = 10) -> dict:
 
     return {
         "prediction": "REAL" if prediction_int == 1 else "FAKE",
+        "confidence": round(confidence, 4),
         "explanations": explanations[:top_k],
+        "fake_features": fake_features,
+        "real_features": real_features,
     }
+

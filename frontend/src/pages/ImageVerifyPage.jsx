@@ -105,14 +105,12 @@ export default function ImageVerifyPage() {
     ? VERDICT_STYLES[result.overall_verdict] || VERDICT_STYLES['UNCERTAIN']
     : null
 
-  const xai = result?.xai || null
-
   return (
     <div className="max-w-3xl mx-auto">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-800">Image Verification</h1>
         <p className="text-slate-400 text-sm mt-1">
-          Full multimodal analysis: OCR text detection + image classification + reverse image search + XAI.
+          Multimodal analysis: ResNet18 classification + OCR text detection + CLIP reverse image search.
         </p>
       </div>
 
@@ -226,92 +224,6 @@ export default function ImageVerifyPage() {
               confidence={result.image_confidence}
             />
           </div>
-
-          {/* Grad-CAM Heatmap */}
-          {xai?.heatmap_url ? (
-            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-sm font-semibold text-slate-600">Grad-CAM Heatmap</p>
-                <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
-                  ResNet18 · layer4
-                </span>
-              </div>
-              <p className="text-xs text-slate-400 mb-3">
-                Highlighted regions show which areas of the image most influenced the{' '}
-                <span className={xai.gradcam_prediction === 'FAKE' ? 'text-red-500 font-medium' : 'text-emerald-600 font-medium'}>
-                  {xai.gradcam_prediction}
-                </span>{' '}
-                prediction ({xai.gradcam_confidence != null ? Math.round(xai.gradcam_confidence * 100) : '—'}% confidence).
-                Red = high influence, blue = low influence.
-              </p>
-              <img
-                src={xai.heatmap_url}
-                alt="Grad-CAM heatmap"
-                className="rounded-lg max-h-64 object-contain w-full border border-slate-100"
-                onError={(e) => {
-                  // Hide if the image fails to load
-                  e.currentTarget.parentElement.style.display = 'none'
-                }}
-              />
-            </div>
-          ) : (
-            xai !== null && (
-              <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-                <p className="text-xs text-slate-400">
-                  <span className="font-medium text-slate-500">Grad-CAM:</span>{' '}
-                  Heatmap generation unavailable — model weights may be missing or pytorch_grad_cam is not installed.
-                </p>
-              </div>
-            )
-          )}
-
-          {/* LIME Explanation (lstm / bert only) */}
-          {xai?.lime_explanations && xai.lime_explanations.length > 0 && (
-            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-sm font-semibold text-slate-600">
-                  LIME Explanation ({model.toUpperCase()})
-                </p>
-                <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
-                  OCR text · top features
-                </span>
-              </div>
-              <div className="flex flex-col gap-2">
-                {xai.lime_explanations.slice(0, 10).map((feat, i) => {
-                  const isFakeWord = feat.direction === 'FAKE'
-                  const barW = Math.min(100, Math.round(Math.abs(feat.impact) * 1000))
-                  return (
-                    <div key={i} className="flex items-center gap-2">
-                      <span className="text-xs text-slate-500 w-28 shrink-0 truncate">{feat.word}</span>
-                      <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
-                        <div
-                          className={`h-2 rounded-full ${isFakeWord ? 'bg-red-400' : 'bg-emerald-400'}`}
-                          style={{ width: `${barW}%` }}
-                        />
-                      </div>
-                      <span
-                        className={`text-xs font-medium w-10 text-right shrink-0 ${
-                          isFakeWord ? 'text-red-500' : 'text-emerald-600'
-                        }`}
-                      >
-                        {feat.direction}
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Note: logistic model uses SHAP (available on main predict page) */}
-          {model === 'logistic' && (
-            <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-              <p className="text-xs text-slate-400">
-                SHAP word-level explanation is available for Logistic Regression on the{' '}
-                <a href="/" className="text-indigo-500 hover:underline">main analysis page</a>.
-              </p>
-            </div>
-          )}
 
           {/* OCR text */}
           {result.ocr_text && (

@@ -108,13 +108,16 @@ def build():
             max_length=77,  # CLIP text limit
         )
         with torch.no_grad():
-            output = model.get_text_features(**inputs)
-            # get_text_features returns a tensor directly, but guard against
-            # newer transformers versions wrapping it in a dataclass
-            if hasattr(output, "last_hidden_state"):
-                text_feats = output.last_hidden_state[:, 0, :]
-            else:
-                text_feats = output
+            # get_text_features returns a 512-dim embedding tensor directly
+            text_feats = model.get_text_features(**inputs)
+            
+            # Validate shape (should be batch_size x 512)
+            if text_feats.dim() != 2 or text_feats.shape[1] != 512:
+                logger.warning(
+                    "Unexpected text feature shape: %s (expected [batch, 512])",
+                    text_feats.shape,
+                )
+            
             # L2-normalise for cosine similarity via inner product
             text_feats = torch.nn.functional.normalize(text_feats, dim=-1)
 
@@ -122,6 +125,13 @@ def build():
         logger.info("  Embedded %d / %d", min(i + BATCH_SIZE, len(titles)), len(titles))
 
     embeddings = np.vstack(all_embeddings).astype(np.float32)
+    
+    # Validate final embeddings
+    if embeddings.shape[1] != 512:
+        logger.error(
+            "Embedding dimension mismatch: %d (expected 512); index will be unusable",
+            embeddings.shape[1],
+        )
 
     # 5. Build FAISS index
     dim = embeddings.shape[1]

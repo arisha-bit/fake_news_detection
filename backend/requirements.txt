@@ -38,13 +38,19 @@ joblib
 
 # ============================================================
 # DEEP LEARNING
-# CPU-only torch is installed via --index-url in Dockerfile
-# to avoid downloading 1GB+ of CUDA libraries in a CPU container.
-# torchvision and tensorflow are listed here (no CUDA extras needed).
+# NOTE: torch + torchvision are installed BEFORE this file by the
+# Dockerfile's dedicated RUN step using the PyTorch CPU wheel index.
+# They are NOT listed here to prevent pip pulling a CUDA build.
 # ============================================================
 tensorflow
-torchvision
-transformers
+
+# The DistilBERT model checkpoint was saved with transformers 5.12.1.
+# We pin to the same minor series so that config/weight format is
+# compatible. The torch.accelerator issue is bypassed in predict_bert.py
+# by NOT passing device_map and setting CUDA_VISIBLE_DEVICES=-1.
+transformers==5.12.1
+tokenizers>=0.21,<0.22
+huggingface_hub>=0.27,<1.0
 datasets
 
 # ============================================================
@@ -78,6 +84,11 @@ grad-cam
 # ============================================================
 requests
 httpx
+
+# ============================================================
+# REPORT GENERATION
+# ============================================================
+reportlab
 
 # ============================================================
 # TESTING

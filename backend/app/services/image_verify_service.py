@@ -26,12 +26,37 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 
+def count_meaningful_chars(text: str) -> int:
+    """
+    Count meaningful characters in text, excluding only pure whitespace.
+    
+    A text is considered "meaningful" if it has >20 characters that aren't
+    just spaces/newlines/tabs. This allows punctuation and symbols, which are
+    often part of valid OCR output.
+    
+    Args:
+        text: The OCR-extracted or input text.
+    
+    Returns:
+        Count of characters excluding pure whitespace.
+    """
+    if not text:
+        return 0
+    # Count all non-whitespace characters (preserves punctuation, symbols)
+    meaningful = len(text) - len(text) + len(text.replace(" ", "").replace("\n", "").replace("\t", "").replace("\r", ""))
+    # Simpler: count non-whitespace directly
+    import re
+    # Count all chars that are not whitespace
+    non_ws = re.sub(r'\s+', '', text)
+    return len(non_ws)
+
+
 def run_ocr_branch(image_path: str, model_choice: str = "logistic") -> dict:
     """
     Run OCR on the image then predict using the text pipeline.
 
     OCR returns empty string when no text found — this is NOT an error.
-    Only runs prediction if meaningful text (>20 chars) is found.
+    Only runs prediction if more than 20 meaningful characters are found.
 
     Returns:
         {ocr_text, text_prediction, text_confidence}
@@ -42,12 +67,16 @@ def run_ocr_branch(image_path: str, model_choice: str = "logistic") -> dict:
         from app.api.prediction import _run_model
 
         ocr_text = extract_text_from_image(image_path)
-        logger.info("OCR branch: extracted %d chars in %.3fs", len(ocr_text or ""), time.perf_counter() - t0)
+        meaningful_count = count_meaningful_chars(ocr_text)
+        logger.info(
+            "OCR branch: extracted %d total chars (%d meaningful) in %.3fs",
+            len(ocr_text or ""), meaningful_count, time.perf_counter() - t0
+        )
 
-        if not ocr_text or len(ocr_text.strip()) < 20:
+        if meaningful_count <= 20:
             logger.info(
-                "OCR branch: no meaningful text extracted (%d chars) — skipping text analysis",
-                len(ocr_text or ""),
+                "OCR branch: insufficient meaningful text (%d chars <= 20 threshold) — skipping text analysis",
+                meaningful_count,
             )
             return {
                 "ocr_text": ocr_text or "",
@@ -297,8 +326,7 @@ def compute_verdict(
         )
         if clip_reuse:
             reasoning.append(
-                "Visually similar images appear in indexed news content — "
-                "retrieved for reference only."
+                "Possible image reuse detected: visually similar images appear in indexed news context."
             )
         return "LIKELY FAKE", reasoning
 
@@ -308,8 +336,7 @@ def compute_verdict(
         )
         if clip_reuse:
             reasoning.append(
-                "Similar images found in indexed news — "
-                "consistent with genuine news reporting."
+                "Similar images found in indexed news consistent with genuine reporting context."
             )
         return "LIKELY REAL", reasoning
 
@@ -320,8 +347,7 @@ def compute_verdict(
         )
         if clip_reuse:
             reasoning.append(
-                "Similar images retrieved from indexed news — "
-                "context should be verified independently."
+                "Possible image reuse detected: similar images retrieved from indexed news, context should be verified independently."
             )
         return "LIKELY MISLEADING", reasoning
 

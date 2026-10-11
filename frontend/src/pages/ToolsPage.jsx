@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { searchEvidence, checkCredibility, analysePropaganda, extractKnowledgeGraph } from '../api/upload'
+import { searchEvidence, analysePropaganda, extractKnowledgeGraph } from '../api/upload'
 
 // ─── Evidence Search ───────────────────────────────────────────────────────────
 function EvidenceTab() {
@@ -53,68 +53,6 @@ function EvidenceTab() {
               </div>
             </div>
           ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ─── Credibility Check ────────────────────────────────────────────────────────
-function CredibilityTab() {
-  const [url, setUrl] = useState('')
-  const [result, setResult] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-
-  const submit = async (e) => {
-    e.preventDefault()
-    setError(''); setResult(null); setLoading(true)
-    try {
-      const res = await checkCredibility({ url })
-      setResult(res.data)
-    } catch (err) { setError(err.response?.data?.detail || 'Check failed.') }
-    finally { setLoading(false) }
-  }
-
-  const labelColor = (l) => ({ HIGH: 'text-emerald-600', MEDIUM: 'text-amber-500', LOW: 'text-orange-500', VERY_LOW: 'text-red-500' }[l] || 'text-slate-500')
-
-  return (
-    <div className="flex flex-col gap-4">
-      <form onSubmit={submit} className="flex gap-2">
-        <input value={url} onChange={(e) => setUrl(e.target.value)} required
-          placeholder="e.g. https://reuters.com/article or bbc.com"
-          className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-400 text-slate-700" />
-        <button type="submit" disabled={loading || !url.trim()}
-          className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 px-4 py-2 rounded-lg text-sm text-white font-medium">
-          {loading ? '...' : 'Check'}
-        </button>
-      </form>
-      {error && <p className="text-red-500 text-sm">{error}</p>}
-      {result && (
-        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <p className="font-semibold text-slate-700">{result.domain}</p>
-            {result.found_in_database && (
-              <span className={`text-sm font-bold ${labelColor(result.credibility_label)}`}>{result.credibility_label}</span>
-            )}
-          </div>
-          <p className="text-sm text-slate-500">{result.verdict}</p>
-          {result.found_in_database && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-1">
-              {[
-                { label: 'Trust Score', value: `${result.trust_score}/100` },
-                { label: 'Reliability', value: `${result.reliability_score}/100` },
-                { label: 'Bias', value: result.bias_rating },
-                { label: 'Category', value: result.category },
-              ].map(({ label, value }) => (
-                <div key={label} className="bg-slate-50 rounded-lg p-3">
-                  <p className="text-xs text-slate-400">{label}</p>
-                  <p className="text-sm font-semibold text-slate-700 mt-0.5">{value}</p>
-                </div>
-              ))}
-            </div>
-          )}
-          {result.notes && <p className="text-xs text-slate-400 italic">{result.notes}</p>}
         </div>
       )}
     </div>
@@ -291,7 +229,6 @@ function KnowledgeGraphTab() {
 // ─── Main ToolsPage ───────────────────────────────────────────────────────────
 const TABS = [
   { id: 'evidence', label: 'Evidence' },
-  { id: 'credibility', label: 'Credibility' },
   { id: 'propaganda', label: 'Propaganda' },
   { id: 'graph', label: 'Knowledge Graph' },
 ]
@@ -318,9 +255,9 @@ export default function ToolsPage() {
       </div>
 
       {activeTab === 'evidence' && <EvidenceTab />}
-      {activeTab === 'credibility' && <CredibilityTab />}
       {activeTab === 'propaganda' && <PropagandaTab />}
       {activeTab === 'graph' && <KnowledgeGraphTab />}
     </div>
   )
 }
+

@@ -18,6 +18,5 @@ export const reverseImageSearch = (formData, topK = 5) => {
   })
 }
 
-export const checkCredibility = (data) => api.post('/credibility/check', data)
 export const analysePropaganda = (data) => api.post('/propaganda/analyse', data)
 export const extractKnowledgeGraph = (data) => api.post('/knowledge-graph/extract', data)

@@ -1,5 +1,10 @@
 import os
+# These must be set before torch/transformers/tensorflow are imported anywhere.
+# CUDA_VISIBLE_DEVICES=-1 forces CPU-only mode for both torch and tf.
+# Transformers 5.x calls torch.accelerator.current_accelerator() during
+# from_pretrained(); with no visible CUDA devices this returns cpu cleanly.
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
 os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 os.environ["TF_NUM_INTEROP_THREADS"] = "1"
@@ -34,7 +39,6 @@ from app.api.upload.routes import router as upload_router
 from app.api.claims import router as claims_router
 from app.api.evidence import router as evidence_router
 from app.api.images import router as images_router
-from app.api.credibility import router as credibility_router
 from app.api.propaganda import router as propaganda_router
 from app.api.knowledge_graph import router as knowledge_graph_router
 from app.api.image_predict import router as image_predict_router
@@ -84,7 +88,6 @@ app.include_router(upload_router)
 app.include_router(claims_router)
 app.include_router(evidence_router)
 app.include_router(images_router)
-app.include_router(credibility_router)
 app.include_router(propaganda_router)
 app.include_router(knowledge_graph_router)
 app.include_router(image_predict_router)

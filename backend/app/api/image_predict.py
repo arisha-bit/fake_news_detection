@@ -87,19 +87,27 @@ async def classify_image(
         heatmap_output = _heatmap_output_path()
         gradcam = run_gradcam_branch(file_path, heatmap_output)
 
+        # --- OCR branch (> 20 meaningful chars activates text analysis) ---
+        ocr = run_ocr_branch(file_path, model_choice="logistic")
+        has_meaningful_text = ocr.get("text_prediction") is not None
+
         logger.info(
-            "Image classification — user=%s, result=%s, gradcam=%s, total=%.3fs",
+            "Image classification — user=%s, result=%s, gradcam=%s, ocr_meaningful=%s, total=%.3fs",
             current_user.id, img["image_prediction"],
             "ok" if gradcam["heatmap_url"] else "unavailable",
+            has_meaningful_text,
             time.perf_counter() - t0,
         )
 
-        # confidence is 0–1 after normalisation in image_verify_service
         return ImageClassificationResponse(
             prediction=img["image_prediction"],
             confidence=img["image_confidence"],
             class_probabilities=img["image_class_probabilities"],
             heatmap_url=gradcam["heatmap_url"],
+            ocr_text=ocr.get("ocr_text") or None,
+            has_meaningful_text=has_meaningful_text,
+            text_prediction=ocr.get("text_prediction"),
+            text_confidence=ocr.get("text_confidence"),
         )
     finally:
         delete_temp_file(file_path)
@@ -141,29 +149,20 @@ async def verify_image(
 
     try:
         # -----------------------------------------------------------------
-        # Run all analysis branches
-        # Each branch degrades gracefully on failure.
+        # Run analysis branches for Image Verify:
+        # OCR (text), ResNet18 (image classification), and CLIP (similarity search).
+        # Explanations (Grad-CAM, LIME) are NOT generated in Image Verify mode.
         # -----------------------------------------------------------------
         ocr = run_ocr_branch(file_path, model_choice=model)
         img = run_image_classification_branch(file_path)
         clip = run_clip_branch(file_path, top_k=top_k)
 
-        # Grad-CAM — runs after image classification to reuse loaded model
-        heatmap_output = _heatmap_output_path()
-        gradcam = run_gradcam_branch(file_path, heatmap_output)
-
-        # LIME — only for lstm/bert models on OCR text
-        lime = run_lime_branch(ocr["ocr_text"], model_choice=model)
-
         logger.info(
-            "All branches complete in %.3fs — ocr=%s, img=%s, clip=%d articles, "
-            "gradcam=%s, lime=%s",
+            "Image verify branches complete in %.3fs — ocr=%s, img=%s, clip=%d articles",
             time.perf_counter() - t0,
             ocr["text_prediction"],
             img["image_prediction"],
             len(clip["similar_articles"]),
-            "ok" if gradcam["heatmap_url"] else "skip",
-            "ok" if lime["lime_prediction"] else "skip",
         )
 
         # -----------------------------------------------------------------
@@ -216,29 +215,7 @@ async def verify_image(
             verdict, current_user.id, time.perf_counter() - t0,
         )
 
-        # -----------------------------------------------------------------
-        # Build XAI result
-        # -----------------------------------------------------------------
-        lime_features = None
-        if lime["lime_explanations"] is not None:
-            lime_features = [
-                LIMEFeature(
-                    word=e["word"],
-                    impact=e["impact"],
-                    direction=e["direction"],
-                )
-                for e in lime["lime_explanations"]
-            ]
-
-        xai_result = ImageXAIResult(
-            heatmap_url=gradcam["heatmap_url"],
-            gradcam_prediction=gradcam["gradcam_prediction"],
-            gradcam_confidence=gradcam["gradcam_confidence"],
-            lime_prediction=lime["lime_prediction"],
-            lime_confidence=lime["lime_confidence"],
-            lime_explanations=lime_features,
-        )
-
+        # Image Verify mode does not return Grad-CAM or LIME explanations
         return ImageVerificationResponse(
             ocr_text=ocr["ocr_text"],
             text_prediction=ocr["text_prediction"] or "UNAVAILABLE",
@@ -248,7 +225,7 @@ async def verify_image(
             image_class_probabilities=img["image_class_probabilities"],
             similar_articles=[SimilarArticle(**a) for a in clip["similar_articles"]],
             clip_reuse_detected=clip["clip_reuse_detected"],
-            xai=xai_result,
+            xai=None,
             overall_verdict=verdict,
             reasoning=reasoning,
             prediction_id=prediction_id,

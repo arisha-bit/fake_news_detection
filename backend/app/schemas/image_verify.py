@@ -32,7 +32,7 @@ class ImageXAIResult(BaseModel):
 
 
 class ImageClassificationResponse(BaseModel):
-    """Response from POST /predict/image — pure image classification."""
+    """Response from POST /predict/image — pure image classification with Grad-CAM and OCR."""
     prediction: str = Field(..., description="FAKE or REAL")
     confidence: float
     class_probabilities: dict
@@ -40,6 +40,11 @@ class ImageClassificationResponse(BaseModel):
         None,
         description="URL path to Grad-CAM heatmap PNG, or null if generation failed"
     )
+    ocr_text: Optional[str] = None
+    has_meaningful_text: bool = False
+    text_prediction: Optional[str] = None
+    text_confidence: Optional[float] = None
+
 
 
 class SimilarArticle(BaseModel):

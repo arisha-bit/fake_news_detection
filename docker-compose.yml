@@ -20,11 +20,16 @@ services:
     env_file:
       - ./backend/.env
     environment:
+      # Force CPU-only mode — must be first so torch sees it at import time
       - CUDA_VISIBLE_DEVICES=-1
+      # Prevent transformers from calling torch.accelerator on CPU machines
+      - TRANSFORMERS_NO_ADVISORY_WARNINGS=1
+      # TF CPU-only
       - TF_ENABLE_ONEDNN_OPTS=0
       - TF_CPP_MIN_LOG_LEVEL=3
       - TF_NUM_INTEROP_THREADS=1
       - TF_NUM_INTRAOP_THREADS=1
+      # Tokenizers parallelism off (avoids deadlocks in uvicorn workers)
       - TOKENIZERS_PARALLELISM=false
     ports:
       - "8000:8000"
@@ -42,7 +47,7 @@ services:
       interval: 15s
       timeout: 10s
       retries: 5
-      start_period: 30s
+      start_period: 60s
 
   frontend:
     build:

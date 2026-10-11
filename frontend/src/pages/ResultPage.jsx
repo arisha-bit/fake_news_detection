@@ -1,12 +1,18 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { submitFeedback } from '../api/feedback'
+import { explainPrediction } from '../api/prediction'
 
 export default function ResultPage() {
   const { state } = useLocation()
   const navigate = useNavigate()
   const [feedbackSent, setFeedbackSent] = useState(false)
   const [feedbackLoading, setFeedbackLoading] = useState(false)
+
+  const [activeMethod, setActiveMethod] = useState('shap')
+  const [loadedExplanations, setLoadedExplanations] = useState({})
+  const [explainingLoading, setExplainingLoading] = useState(false)
+  const [explainingError, setExplainingError] = useState('')
 
   if (!state?.result) {
     navigate('/')
@@ -17,6 +23,50 @@ export default function ResultPage() {
   const isFake = r.prediction === 'FAKE'
   const isEnsemble = r.model === 'ensemble'
   const confidencePct = Math.round((r.confidence || 0) * 100)
+  const modelName = r.model || 'logistic'
+
+  // Initialize with any pre-loaded SHAP data
+  useEffect(() => {
+    if (r.xai?.shap && !loadedExplanations[`${modelName}-shap`]) {
+      setLoadedExplanations(prev => ({
+        ...prev,
+        [`${modelName}-shap`]: {
+          explanations: r.xai.shap.top_features || [],
+          fake_features: r.xai.shap.fake_features || [],
+          real_features: r.xai.shap.real_features || [],
+        }
+      }))
+    }
+  }, [r, modelName])
+
+  const handleFetchExplanation = async (method) => {
+    setActiveMethod(method)
+    const key = `${modelName}-${method}`
+    if (loadedExplanations[key] || isEnsemble) return
+
+    setExplainingLoading(true)
+    setExplainingError('')
+    try {
+      const res = await explainPrediction({
+        text: r.text,
+        model: modelName,
+        method: method,
+        top_k: 10,
+      })
+      setLoadedExplanations(prev => ({
+        ...prev,
+        [key]: {
+          explanations: res.data.explanations || [],
+          fake_features: res.data.fake_features || [],
+          real_features: res.data.real_features || [],
+        }
+      }))
+    } catch (err) {
+      setExplainingError(err.response?.data?.detail || `Failed to generate ${method.toUpperCase()} explanation.`)
+    } finally {
+      setExplainingLoading(false)
+    }
+  }
 
   const handleFeedback = async (is_correct) => {
     if (!r.prediction_id || feedbackSent) return
@@ -31,9 +81,10 @@ export default function ResultPage() {
     }
   }
 
-  // XAI data — only present for logistic model
+  // Active explanation data
+  const currentExpKey = `${modelName}-${activeMethod}`
+  const currentExp = loadedExplanations[currentExpKey] || null
   const xai = r.xai || null
-  const shap = xai?.shap || null
 
   return (
     <div className="max-w-2xl mx-auto flex flex-col gap-5">
@@ -69,11 +120,11 @@ export default function ResultPage() {
         <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
           <h2 className="text-sm font-semibold text-slate-600 mb-3">Model Votes</h2>
           <div className="grid grid-cols-3 gap-3">
-            {Object.entries(r.votes).map(([modelName, vote]) => (
-              <div key={modelName} className={`rounded-xl p-3 text-center border ${
+            {Object.entries(r.votes).map(([vModel, vote]) => (
+              <div key={vModel} className={`rounded-xl p-3 text-center border ${
                 vote.prediction === 'FAKE' ? 'bg-red-50 border-red-100' : 'bg-emerald-50 border-emerald-100'
               }`}>
-                <p className="text-xs text-slate-400 capitalize mb-1">{modelName}</p>
+                <p className="text-xs text-slate-400 capitalize mb-1">{vModel}</p>
                 <p className={`text-sm font-bold ${vote.prediction === 'FAKE' ? 'text-red-500' : 'text-emerald-600'}`}>
                   {vote.prediction}
                 </p>
@@ -97,51 +148,119 @@ export default function ResultPage() {
             </div>
           )}
 
-          {/* SHAP XAI — only for logistic model */}
-          {shap && shap.top_features && shap.top_features.length > 0 && (
-            <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-semibold text-slate-600">SHAP Explanation (Logistic Regression)</h2>
-                <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
-                  Top influential words
-                </span>
-              </div>
-              <div className="flex flex-col gap-2">
-                {shap.top_features.slice(0, 8).map((feat, i) => {
-                  const isFakeWord = feat.direction === 'FAKE'
-                  const barW = Math.min(100, Math.round(feat.impact * 1000))
-                  return (
-                    <div key={i} className="flex items-center gap-2">
-                      <span className="text-xs text-slate-500 w-28 shrink-0 truncate">{feat.word}</span>
-                      <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
-                        <div
-                          className={`h-2 rounded-full ${isFakeWord ? 'bg-red-400' : 'bg-emerald-400'}`}
-                          style={{ width: `${barW}%` }}
-                        />
-                      </div>
-                      <span className={`text-xs font-medium w-10 text-right shrink-0 ${
-                        isFakeWord ? 'text-red-500' : 'text-emerald-600'
-                      }`}>
-                        {feat.direction}
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
-              {shap.fake_features.length > 0 && (
-                <p className="text-xs text-slate-400 mt-3">
-                  <span className="text-red-400 font-medium">Fake indicators:</span>{' '}
-                  {shap.fake_features.slice(0, 5).join(', ')}
+          {/* Model Explainability: Both SHAP and LIME */}
+          <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-800">
+                  Model Explainability ({modelName.toUpperCase()})
+                </h2>
+                <p className="text-xs text-slate-400">
+                  Inspect word contributions using SHAP or LIME
                 </p>
-              )}
-              {shap.real_features.length > 0 && (
-                <p className="text-xs text-slate-400 mt-1">
-                  <span className="text-emerald-600 font-medium">Real indicators:</span>{' '}
-                  {shap.real_features.slice(0, 5).join(', ')}
-                </p>
-              )}
+              </div>
+
+              {/* Method Selector Tabs */}
+              <div className="flex gap-1.5 bg-slate-100 p-1 rounded-lg shrink-0">
+                <button
+                  type="button"
+                  onClick={() => handleFetchExplanation('shap')}
+                  className={`px-3 py-1.5 rounded-md text-xs font-semibold transition ${
+                    activeMethod === 'shap'
+                      ? 'bg-white text-indigo-700 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  SHAP
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleFetchExplanation('lime')}
+                  className={`px-3 py-1.5 rounded-md text-xs font-semibold transition ${
+                    activeMethod === 'lime'
+                      ? 'bg-white text-indigo-700 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  LIME
+                </button>
+              </div>
             </div>
-          )}
+
+            {explainingLoading && (
+              <div className="py-8 flex flex-col items-center justify-center gap-2">
+                <span className="w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                <p className="text-xs text-slate-400">Computing {activeMethod.toUpperCase()} explanation for {modelName}...</p>
+              </div>
+            )}
+
+            {explainingError && (
+              <div className="p-3 bg-red-50 text-red-600 rounded-lg text-xs mb-3">
+                {explainingError}
+              </div>
+            )}
+
+            {!explainingLoading && !currentExp && (
+              <div className="text-center py-6">
+                <p className="text-xs text-slate-400 mb-3">
+                  Click below to generate {activeMethod.toUpperCase()} word attributions for this prediction.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => handleFetchExplanation(activeMethod)}
+                  className="px-4 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 rounded-lg text-xs font-medium transition"
+                >
+                  Compute {activeMethod.toUpperCase()} Explanation
+                </button>
+              </div>
+            )}
+
+            {!explainingLoading && currentExp && currentExp.explanations?.length > 0 && (
+              <>
+                <div className="flex flex-col gap-2">
+                  {currentExp.explanations.slice(0, 10).map((feat, i) => {
+                    const isFakeWord = feat.direction === 'FAKE'
+                    const barW = Math.min(100, Math.round(feat.impact * 1000)) || Math.round(feat.impact * 100) || 10
+                    return (
+                      <div key={i} className="flex items-center gap-2">
+                        <span className="text-xs text-slate-600 font-medium w-28 shrink-0 truncate">{feat.word}</span>
+                        <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                          <div
+                            className={`h-2 rounded-full ${isFakeWord ? 'bg-red-400' : 'bg-emerald-400'}`}
+                            style={{ width: `${Math.max(8, barW)}%` }}
+                          />
+                        </div>
+                        <span className={`text-xs font-semibold w-12 text-right shrink-0 ${
+                          isFakeWord ? 'text-red-500' : 'text-emerald-600'
+                        }`}>
+                          {feat.direction}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {currentExp.fake_features?.length > 0 && (
+                  <p className="text-xs text-slate-500 mt-4">
+                    <span className="text-red-500 font-medium">Fake indicators:</span>{' '}
+                    {currentExp.fake_features.slice(0, 5).join(', ')}
+                  </p>
+                )}
+                {currentExp.real_features?.length > 0 && (
+                  <p className="text-xs text-slate-500 mt-1">
+                    <span className="text-emerald-600 font-medium">Real indicators:</span>{' '}
+                    {currentExp.real_features.slice(0, 5).join(', ')}
+                  </p>
+                )}
+
+                <div className="mt-4 pt-3 border-t border-slate-100">
+                  <p className="text-[11px] text-slate-400">
+                    ℹ️ Feature attributions reflect words that most heavily influenced this model's prediction estimate. They do not constitute proof that an event factually occurred.
+                  </p>
+                </div>
+              </>
+            )}
+          </div>
 
           {/* Keywords + Clickbait */}
           <div className="grid grid-cols-2 gap-4">
@@ -174,16 +293,6 @@ export default function ResultPage() {
               </div>
             </div>
           </div>
-
-          {/* Note for non-logistic models */}
-          {r.model && r.model !== 'logistic' && (
-            <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-              <p className="text-xs text-slate-400">
-                SHAP explanation is only available for the Logistic Regression model.
-                Select <span className="font-medium text-slate-600">Logistic</span> to see word-level XAI.
-              </p>
-            </div>
-          )}
         </>
       )}
 

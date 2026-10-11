@@ -2,29 +2,62 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# System deps: curl for healthcheck, libgomp for faiss/torch CPU ops
+# ============================================================
+# SYSTEM DEPENDENCIES
+# curl     -> backend healthcheck (used in docker-compose)
+# libgomp1 -> FAISS / PyTorch OpenMP CPU operations
+# libglib2.0-0 -> required by opencv-python-headless
+# ============================================================
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl libgomp1 && \
+    apt-get install -y --no-install-recommends \
+        curl \
+        libgomp1 \
+        libglib2.0-0 && \
     rm -rf /var/lib/apt/lists/*
 
+# ============================================================
+# PYTHON DEPENDENCIES
+# ============================================================
 COPY requirements.txt .
 
-# Install PyTorch CPU-only FIRST from the official CPU index.
-# This prevents pip from pulling CUDA wheels (500MB+ each) for a CPU container.
+# ============================================================
+# PYTORCH CPU-ONLY
+# Installed first so subsequent pip installs cannot pull a CUDA build.
+#   torch       2.6.0+cpu
+#   torchvision 0.21.0+cpu
+# ============================================================
 RUN pip install --no-cache-dir \
-    torch==2.3.1+cpu \
-    torchvision==0.18.1+cpu \
+    torch==2.6.0+cpu \
+    torchvision==0.21.0+cpu \
     --index-url https://download.pytorch.org/whl/cpu
 
-# Install all remaining dependencies (torch/torchvision already satisfied above)
+# ============================================================
+# ALL OTHER PYTHON DEPENDENCIES
+# ============================================================
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Download spaCy English model for claim extraction + knowledge graph
+# ============================================================
+# SPACY ENGLISH MODEL
+# ============================================================
 RUN python -m spacy download en_core_web_sm
 
+# ============================================================
+# APPLICATION CODE
+# ============================================================
 COPY . .
 
-# Make entrypoint executable
+# ============================================================
+# VERIFY DISTILBERT IMPORTS AT BUILD TIME
+# This catches version mismatches before the container ever starts.
+# ============================================================
+RUN CUDA_VISIBLE_DEVICES=-1 python -c "\
+import os; os.environ['CUDA_VISIBLE_DEVICES']='-1'; \
+from transformers import DistilBertTokenizerFast, DistilBertForSequenceClassification; \
+print('DistilBERT imports OK')"
+
+# ============================================================
+# ENTRYPOINT
+# ============================================================
 RUN chmod +x entrypoint.sh
 
 EXPOSE 8000

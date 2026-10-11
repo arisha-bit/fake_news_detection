@@ -14,6 +14,7 @@ Design:
 
 import logging
 import pickle
+import threading
 import time
 from pathlib import Path
 from typing import Optional
@@ -35,48 +36,53 @@ METADATA_PATH = INDEX_DIR / "metadata.pkl"
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 
 # ---------------------------------------------------------------------------
-# Singletons
+# Singletons & locks
 # ---------------------------------------------------------------------------
 
 _faiss_index = None
 _metadata: Optional[list[dict]] = None
 _embedder = None
+_lock = threading.Lock()
 
 
 def _get_index():
     global _faiss_index, _metadata
 
+    # Double-check locking pattern for thread-safe singleton
     if _faiss_index is None:
-        if not FAISS_INDEX_PATH.exists() or not METADATA_PATH.exists():
-            raise HTTPException(
-                status_code=503,
-                detail=(
-                    "Evidence index not found. "
-                    "Run: python -m app.ml.embeddings.build_index "
-                    "to build the index before using evidence retrieval."
-                ),
-            )
-        try:
-            import faiss  # noqa: PLC0415
+        with _lock:
+            # Check again after acquiring lock (another thread may have loaded)
+            if _faiss_index is None:
+                if not FAISS_INDEX_PATH.exists() or not METADATA_PATH.exists():
+                    raise HTTPException(
+                        status_code=503,
+                        detail=(
+                            "Evidence index not found. "
+                            "Run: python -m app.ml.embeddings.build_index "
+                            "to build the index before using evidence retrieval."
+                        ),
+                    )
+                try:
+                    import faiss  # noqa: PLC0415
 
-            t0 = time.perf_counter()
-            logger.info("Loading FAISS index from %s", FAISS_INDEX_PATH)
-            _faiss_index = faiss.read_index(str(FAISS_INDEX_PATH))
+                    t0 = time.perf_counter()
+                    logger.info("Loading FAISS index from %s", FAISS_INDEX_PATH)
+                    _faiss_index = faiss.read_index(str(FAISS_INDEX_PATH))
 
-            with open(METADATA_PATH, "rb") as f:
-                _metadata = pickle.load(f)
+                    with open(METADATA_PATH, "rb") as f:
+                        _metadata = pickle.load(f)
 
-            logger.info(
-                "FAISS index loaded — %d vectors in %.2fs", _faiss_index.ntotal, time.perf_counter() - t0
-            )
-        except HTTPException:
-            raise
-        except Exception as exc:
-            logger.error("Failed to load FAISS index: %s", exc)
-            raise HTTPException(
-                status_code=500,
-                detail=f"Evidence index failed to load: {str(exc)}",
-            ) from exc
+                    logger.info(
+                        "FAISS index loaded — %d vectors in %.2fs", _faiss_index.ntotal, time.perf_counter() - t0
+                    )
+                except HTTPException:
+                    raise
+                except Exception as exc:
+                    logger.error("Failed to load FAISS index: %s", exc)
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Evidence index failed to load: {str(exc)}",
+                    ) from exc
 
     return _faiss_index, _metadata
 

@@ -80,6 +80,13 @@ def generate_gradcam(image_path: str, output_path: str) -> dict:
     t0 = time.perf_counter()
     model = _get_model()
 
+    # Validate model architecture
+    if not hasattr(model, "layer4") or len(model.layer4) == 0:
+        raise AttributeError(
+            f"Model does not have expected layer4 attribute or it is empty. "
+            f"Model type: {type(model).__name__}"
+        )
+
     # Load and preprocess image
     image = Image.open(image_path).convert("RGB")
     image_resized = image.resize((224, 224))
@@ -101,6 +108,16 @@ def generate_gradcam(image_path: str, output_path: str) -> dict:
 
     # Overlay heatmap on the resized RGB image
     rgb_image = numpy_from_pil(image_resized)
+    
+    # Validate rgb_image is in correct range
+    if rgb_image.min() < 0.0 or rgb_image.max() > 1.0:
+        logger.warning(
+            "RGB image out of [0, 1] range: min=%.4f, max=%.4f; clipping",
+            rgb_image.min(),
+            rgb_image.max(),
+        )
+        rgb_image = np.clip(rgb_image, 0.0, 1.0)
+    
     visualization = show_cam_on_image(rgb_image, grayscale_cam, use_rgb=True)
 
     # Save PNG
@@ -123,4 +140,12 @@ def generate_gradcam(image_path: str, output_path: str) -> dict:
 def numpy_from_pil(pil_image) -> "np.ndarray":
     """Convert PIL image to float32 numpy array in [0, 1] range."""
     import numpy as np
-    return np.array(pil_image).astype(np.float32) / 255.0
+    arr = np.array(pil_image).astype(np.float32) / 255.0
+    # Validate result is in correct range
+    if arr.min() < 0.0 or arr.max() > 1.0:
+        logger.warning(
+            "numpy_from_pil produced out-of-range values: min=%.4f, max=%.4f",
+            arr.min(),
+            arr.max(),
+        )
+    return arr
