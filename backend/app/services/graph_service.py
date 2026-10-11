@@ -96,9 +96,12 @@ def extract_knowledge_graph(
     nlp = _get_nlp()
 
     # Truncate very long texts to avoid memory issues
-    truncated = text[:50_000]
+    is_truncated = False
+    truncated = text
     if len(text) > 50_000:
-        logger.warning("Text truncated to 50,000 chars for graph extraction.")
+        is_truncated = True
+        truncated = text[:50_000]
+        logger.warning("Text truncated to 50,000 chars for graph extraction (original: %d chars).", len(text))
 
     logger.info("Extracting knowledge graph from %d chars of text.", len(truncated))
 
@@ -201,9 +204,24 @@ def extract_knowledge_graph(
 # ---------------------------------------------------------------------------
 
 def _normalise_id(text: str) -> str:
-    """Create a stable lowercase node ID from an entity string."""
+    """Create a stable lowercase node ID from an entity string.
+    
+    Normalization steps:
+    1. Collapse multiple spaces to single space
+    2. Convert to lowercase
+    3. Remove punctuation, keeping alphanumerics and spaces
+    4. Strip leading/trailing spaces
+    """
+    # Step 1-2: Collapse spaces and lowercase
     normalised = re.sub(r"\s+", " ", text).strip().lower()
-    normalised = re.sub(r"^[^a-z0-9]+|[^a-z0-9]+$", "", normalised)
+    
+    # Step 3: Remove punctuation but keep alphanumerics and spaces
+    # This replaces all non-alphanumeric, non-space characters with nothing
+    normalised = re.sub(r"[^a-z0-9\s]+", "", normalised)
+    
+    # Step 4: Collapse any spaces created by punctuation removal
+    normalised = re.sub(r"\s+", " ", normalised).strip()
+    
     return normalised
 
 

@@ -311,32 +311,55 @@ def _match_patterns(
 def _detect_repetition(text: str) -> tuple[float, list[str]]:
     """
     Detect significant phrase repetition in *text*.
-    Finds 3–6 word n-grams repeated 3+ times.
+    Finds 3–5 word n-grams repeated 3+ times.
+    Uses multiple n-gram sizes to catch phrases of different lengths.
     """
     words = re.findall(r"\b\w+\b", text.lower())
-    n = 4  # 4-gram window
+    
+    all_repeated = []
+    
+    # Try n-gram sizes 3, 4, 5 to catch phrases of different lengths
+    for n in [3, 4, 5]:
+        if len(words) < n:
+            continue
+            
+        counts: dict[str, int] = {}
+        for i in range(len(words) - n + 1):
+            gram = " ".join(words[i : i + n])
+            counts[gram] = counts.get(gram, 0) + 1
 
-    counts: dict[str, int] = {}
-    for i in range(len(words) - n + 1):
-        gram = " ".join(words[i : i + n])
-        counts[gram] = counts.get(gram, 0) + 1
-
-    # Filter stop-gram noise
-    _STOP_GRAMS = {
-        "the", "and", "of", "in", "to", "a", "that", "is", "it", "for"
-    }
-    repeated = [
-        (gram, count)
-        for gram, count in counts.items()
-        if count >= 3 and not any(w in _STOP_GRAMS for w in gram.split())
-    ]
-    repeated.sort(key=lambda x: -x[1])
-
-    if not repeated:
+        # Filter stop-gram noise using a more selective approach:
+        # Only reject grams that are almost entirely stop words (>= 80% stop words)
+        _STOP_GRAMS = {
+            "the", "and", "of", "in", "to", "a", "that", "is", "it", "for",
+            "be", "as", "or", "at", "by", "from", "on", "this", "with", "have",
+            "has", "can", "would", "could", "will", "do", "does", "did"
+        }
+        
+        for gram, count in counts.items():
+            if count >= 3:
+                # Calculate stop word ratio
+                gram_words = gram.split()
+                stop_word_count = sum(1 for w in gram_words if w in _STOP_GRAMS)
+                stop_word_ratio = stop_word_count / len(gram_words)
+                
+                # Only skip if >= 80% stop words (e.g., "the and of in")
+                if stop_word_ratio < 0.8:
+                    all_repeated.append((gram, count, n))
+    
+    if not all_repeated:
         return 0.0, []
 
-    matched = [f'"{gram}" (×{count})' for gram, count in repeated[:5]]
-    confidence = round(min(len(repeated) / 3, 1.0), 4)
+    # Sort by count (descending), then by n-gram size (larger = more specific)
+    all_repeated.sort(key=lambda x: (-x[1], -x[2]))
+    
+    # Return top 5 repeated phrases
+    matched = [f'"{gram}" (×{count})' for gram, count, _ in all_repeated[:5]]
+    
+    # Confidence: number of unique repeated phrases detected (up to saturation of 3)
+    num_unique = len([x for x in all_repeated if x[1] >= 3])
+    confidence = round(min(num_unique / 3, 1.0), 4)
+    
     return confidence, matched
 
 
