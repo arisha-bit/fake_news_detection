@@ -16,8 +16,11 @@ from fastapi import HTTPException
 
 logger = logging.getLogger(__name__)
 
-# Entity types to keep — everything else is noise
-_KEPT_TYPES = {"PERSON", "ORG", "GPE", "DATE", "EVENT", "NORP", "FAC", "LOC"}
+# Entity types to keep — expanded to support products, laws, and works of art
+_KEPT_TYPES = {
+    "PERSON", "ORG", "GPE", "DATE", "EVENT", "NORP", "FAC", "LOC",
+    "PRODUCT", "LAW", "WORK_OF_ART", "LANGUAGE",
+}
 
 # Map spaCy labels to our cleaner display types
 _TYPE_MAP = {
@@ -29,6 +32,10 @@ _TYPE_MAP = {
     "NORP":   "ORG",    # nationalities / groups → organisation
     "DATE":   "DATE",
     "EVENT":  "EVENT",
+    "PRODUCT": "PRODUCT",
+    "LAW":    "LAW",
+    "WORK_OF_ART": "WORK_OF_ART",
+    "LANGUAGE": "LANGUAGE",
 }
 
 # ---------------------------------------------------------------------------
@@ -113,7 +120,7 @@ def extract_knowledge_graph(
     entity_labels: dict[str, str] = {}
     entity_types:  dict[str, str] = {}
     entity_freq:   Counter        = Counter()
-    sent_entities: dict[int, list[str]] = defaultdict(list)
+    sent_entities: dict[int, list[tuple[str, any]]] = defaultdict(list)
 
     for sent_idx, sent in enumerate(doc.sents):
         for ent in sent.ents:
@@ -130,7 +137,7 @@ def extract_knowledge_graph(
             entity_labels[eid] = _choose_label(entity_labels.get(eid), raw)
             entity_types[eid]  = _TYPE_MAP.get(ent.label_, "OTHER")
             entity_freq[eid]  += 1
-            sent_entities[sent_idx].append(eid)
+            sent_entities[sent_idx].append((eid, ent))
 
     # ------------------------------------------------------------------
     # 2. Filter by min_frequency and cap at max_nodes
@@ -155,22 +162,39 @@ def extract_knowledge_graph(
     ]
 
     # ------------------------------------------------------------------
-    # 4. Build edges (co-occurrence within same sentence)
+    # 4. Build edges (co-occurrence and relation extraction within same sentence)
     # ------------------------------------------------------------------
     edge_weights: Counter = Counter()
+    edge_relations: dict[tuple[str, str], str] = {}
 
     for sent_ents in sent_entities.values():
-        present = [e for e in sent_ents if e in top_set]
-        present = list(dict.fromkeys(present))  # deduplicate, preserve order
+        present = [(eid, ent) for eid, ent in sent_ents if eid in top_set]
+        unique_present = []
+        seen = set()
+        for eid, ent in present:
+            if eid not in seen:
+                seen.add(eid)
+                unique_present.append((eid, ent))
 
-        for i in range(len(present)):
-            for j in range(i + 1, len(present)):
-                a, b = present[i], present[j]
-                key = (min(a, b), max(a, b))
+        for i in range(len(unique_present)):
+            for j in range(i + 1, len(unique_present)):
+                (a_id, a_ent), (b_id, b_ent) = unique_present[i], unique_present[j]
+                key = (min(a_id, b_id), max(a_id, b_id))
                 edge_weights[key] += 1
+                if key not in edge_relations or edge_relations[key] == "co-occurs with":
+                    rel = _extract_relation(a_ent, b_ent)
+                    if rel != "co-occurs with" or key not in edge_relations:
+                        edge_relations[key] = rel
 
     edges = [
-        {"source": src, "target": tgt, "weight": w}
+        {
+            "source": src,
+            "target": tgt,
+            "weight": w,
+            "relation": edge_relations.get((src, tgt), "co-occurs with"),
+            "source_label": entity_labels.get(src, src),
+            "target_label": entity_labels.get(tgt, tgt),
+        }
         for (src, tgt), w in edge_weights.items()
     ]
     edges.sort(key=lambda e: -e["weight"])
@@ -230,3 +254,30 @@ def _choose_label(existing: str | None, new: str) -> str:
     if existing is None:
         return new
     return new if len(new) > len(existing) else existing
+
+
+def _extract_relation(ent_a, ent_b) -> str:
+    """
+    Derive the syntactic or semantic relationship between two entities
+    in the same sentence using dependency parse and intervening tokens.
+    """
+    try:
+        sent = ent_a.sent
+        # 1. Look for intervening action verb between the entities
+        start_idx = min(ent_a.end, ent_b.end)
+        end_idx = max(ent_a.start, ent_b.start)
+        between_verbs = [
+            t for t in sent.doc[start_idx:end_idx]
+            if t.pos_ == "VERB" and t.lemma_ not in ("be", "have")
+        ]
+        if between_verbs:
+            return between_verbs[0].lemma_
+
+        # 2. Check if either entity's dependency head is an action verb
+        if ent_a.root.head.pos_ == "VERB" and ent_a.root.head.lemma_ not in ("be", "have"):
+            return ent_a.root.head.lemma_
+        if ent_b.root.head.pos_ == "VERB" and ent_b.root.head.lemma_ not in ("be", "have"):
+            return ent_b.root.head.lemma_
+    except Exception:
+        pass
+    return "co-occurs with"

@@ -12,6 +12,8 @@ import logging
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
+
 logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -127,6 +129,9 @@ def explain_prediction(text: str, top_k: int = 10) -> dict:
             continue
         
         impact = float(values[idx])
+        if not np.isfinite(impact) or abs(impact) < 0.0001:
+            continue
+
         # Positive SHAP → pushes toward REAL (class 1)
         # Negative SHAP → pushes toward FAKE (class 0)
         direction = "REAL" if impact > 0 else "FAKE"
@@ -139,6 +144,7 @@ def explain_prediction(text: str, top_k: int = 10) -> dict:
         explanations.append({
             "word": word_str,   # ensure plain Python str, not np.str_
             "impact": round(abs(impact), 4),
+            "weight": round(impact, 4),
             "direction": direction,
         })
 
@@ -153,6 +159,7 @@ def explain_prediction(text: str, top_k: int = 10) -> dict:
     return {
         "prediction": "REAL" if prediction_int == 1 else "FAKE",
         "confidence": round(confidence, 4),
+        "output_space": "log-odds (margin)",
         "explanations": explanations[:top_k],
         "fake_features": fake_features,
         "real_features": real_features,

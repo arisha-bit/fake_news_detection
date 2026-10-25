@@ -14,35 +14,73 @@ export default function ResultPage() {
   const [explainingLoading, setExplainingLoading] = useState(false)
   const [explainingError, setExplainingError] = useState('')
 
-  if (!state?.result) {
-    navigate('/')
-    return null
+  const r = state?.result
+  const isEnsemble = r?.model === 'ensemble'
+  const modelName = r?.model || 'logistic'
+
+  useEffect(() => {
+    if (!r) {
+      navigate('/')
+    }
+  }, [r, navigate])
+
+  const storeExplanation = (key, data) => {
+    setLoadedExplanations((prev) => ({
+      ...prev,
+      [key]: {
+        explanations: data.explanations || [],
+        fake_features: data.fake_features || [],
+        real_features: data.real_features || [],
+        output_space: data.output_space || (key.endsWith('shap') && key.startsWith('logistic') ? 'log-odds (margin)' : 'probability (ΔP)'),
+      },
+    }))
   }
 
-  const r = state.result
-  const isFake = r.prediction === 'FAKE'
-  const isEnsemble = r.model === 'ensemble'
-  const confidencePct = Math.round((r.confidence || 0) * 100)
-  const modelName = r.model || 'logistic'
-
-  // Initialize with any pre-loaded SHAP data
+  // Pre-load SHAP from predict response (logistic) or fetch for lstm/bert
   useEffect(() => {
-    if (r.xai?.shap && !loadedExplanations[`${modelName}-shap`]) {
-      setLoadedExplanations(prev => ({
-        ...prev,
-        [`${modelName}-shap`]: {
-          explanations: r.xai.shap.top_features || [],
-          fake_features: r.xai.shap.fake_features || [],
-          real_features: r.xai.shap.real_features || [],
-        }
-      }))
+    if (!r || isEnsemble) return
+
+    const shapKey = `${modelName}-shap`
+
+    if (r.xai?.shap) {
+      storeExplanation(shapKey, {
+        explanations: r.xai.shap.top_features,
+        fake_features: r.xai.shap.fake_features,
+        real_features: r.xai.shap.real_features,
+        output_space: 'log-odds (margin)',
+      })
+      return
     }
-  }, [r, modelName])
+
+    let cancelled = false
+    setExplainingLoading(true)
+    setExplainingError('')
+    explainPrediction({ text: r.text, model: modelName, method: 'shap', top_k: 10 })
+      .then((res) => {
+        if (cancelled) return
+        storeExplanation(shapKey, res.data)
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setExplainingError(
+            err.response?.data?.detail || 'Failed to generate SHAP explanation.',
+          )
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setExplainingLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [r?.prediction_id, r?.text, modelName, isEnsemble, r?.xai?.shap])
 
   const handleFetchExplanation = async (method) => {
+    if (!r || isEnsemble) return
     setActiveMethod(method)
     const key = `${modelName}-${method}`
-    if (loadedExplanations[key] || isEnsemble) return
+    if (loadedExplanations[key]) return
 
     setExplainingLoading(true)
     setExplainingError('')
@@ -53,20 +91,20 @@ export default function ResultPage() {
         method: method,
         top_k: 10,
       })
-      setLoadedExplanations(prev => ({
-        ...prev,
-        [key]: {
-          explanations: res.data.explanations || [],
-          fake_features: res.data.fake_features || [],
-          real_features: res.data.real_features || [],
-        }
-      }))
+      storeExplanation(key, res.data)
     } catch (err) {
       setExplainingError(err.response?.data?.detail || `Failed to generate ${method.toUpperCase()} explanation.`)
     } finally {
       setExplainingLoading(false)
     }
   }
+
+  if (!r) {
+    return null
+  }
+
+  const isFake = r.prediction === 'FAKE'
+  const confidencePct = Math.round((r.confidence || 0) * 100)
 
   const handleFeedback = async (is_correct) => {
     if (!r.prediction_id || feedbackSent) return
@@ -152,10 +190,17 @@ export default function ResultPage() {
           <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
               <div>
-                <h2 className="text-sm font-semibold text-slate-800">
-                  Model Explainability ({modelName.toUpperCase()})
-                </h2>
-                <p className="text-xs text-slate-400">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm font-semibold text-slate-800">
+                    Model Explainability ({modelName.toUpperCase()})
+                  </h2>
+                  {currentExp?.output_space && (
+                    <span className="text-[10px] font-medium bg-slate-100 text-slate-600 px-2 py-0.5 rounded border border-slate-200">
+                      Space: {currentExp.output_space}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5">
                   Inspect word contributions using SHAP or LIME
                 </p>
               </div>
@@ -215,51 +260,85 @@ export default function ResultPage() {
               </div>
             )}
 
-            {!explainingLoading && currentExp && currentExp.explanations?.length > 0 && (
-              <>
-                <div className="flex flex-col gap-2">
-                  {currentExp.explanations.slice(0, 10).map((feat, i) => {
-                    const isFakeWord = feat.direction === 'FAKE'
-                    const barW = Math.min(100, Math.round(feat.impact * 1000)) || Math.round(feat.impact * 100) || 10
-                    return (
-                      <div key={i} className="flex items-center gap-2">
-                        <span className="text-xs text-slate-600 font-medium w-28 shrink-0 truncate">{feat.word}</span>
-                        <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
-                          <div
-                            className={`h-2 rounded-full ${isFakeWord ? 'bg-red-400' : 'bg-emerald-400'}`}
-                            style={{ width: `${Math.max(8, barW)}%` }}
-                          />
+            {!explainingLoading && currentExp && currentExp.explanations?.length > 0 && (() => {
+              const topExps = currentExp.explanations.slice(0, 10)
+              const maxMagnitude = Math.max(
+                ...topExps.map((f) => Math.abs(f.weight !== undefined && f.weight !== null ? f.weight : f.impact || 0)),
+                0.0001
+              )
+
+              return (
+                <>
+                  <div className="flex flex-col gap-2.5">
+                    {topExps.map((feat, i) => {
+                      const isFakeWord = feat.direction === 'FAKE'
+                      const rawSigned = feat.weight !== undefined && feat.weight !== null
+                        ? feat.weight
+                        : (isFakeWord ? -Math.abs(feat.impact) : Math.abs(feat.impact))
+                      const formattedSigned = (rawSigned > 0 ? '+' : '') + Number(rawSigned).toFixed(4)
+                      const magnitude = Math.abs(rawSigned)
+                      const barW = Math.round((magnitude / maxMagnitude) * 100)
+
+                      return (
+                        <div key={i} className="flex items-center gap-2.5 text-xs">
+                          {/* Feature Word */}
+                          <span className="text-slate-700 font-medium w-24 shrink-0 truncate" title={feat.word}>
+                            {feat.word}
+                          </span>
+
+                          {/* Relative Contribution Bar */}
+                          <div className="flex-1 h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-300 ${isFakeWord ? 'bg-red-400' : 'bg-emerald-400'}`}
+                              style={{ width: `${Math.max(5, barW)}%` }}
+                              title={`Contribution magnitude: ${magnitude.toFixed(4)} (${barW}% of max)`}
+                            />
+                          </div>
+
+                          {/* Actual Signed Attribution Value */}
+                          <span
+                            className={`font-mono font-medium text-[11px] w-16 text-right shrink-0 ${
+                              isFakeWord ? 'text-red-600' : 'text-emerald-600'
+                            }`}
+                            title={`Actual signed attribution in ${currentExp.output_space || 'explainer space'}`}
+                          >
+                            {formattedSigned}
+                          </span>
+
+                          {/* Direction Indicator */}
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border w-12 text-center shrink-0 ${
+                            isFakeWord
+                              ? 'bg-red-50 text-red-600 border-red-200'
+                              : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          }`}>
+                            {feat.direction}
+                          </span>
                         </div>
-                        <span className={`text-xs font-semibold w-12 text-right shrink-0 ${
-                          isFakeWord ? 'text-red-500' : 'text-emerald-600'
-                        }`}>
-                          {feat.direction}
-                        </span>
-                      </div>
-                    )
-                  })}
-                </div>
+                      )
+                    })}
+                  </div>
 
-                {currentExp.fake_features?.length > 0 && (
-                  <p className="text-xs text-slate-500 mt-4">
-                    <span className="text-red-500 font-medium">Fake indicators:</span>{' '}
-                    {currentExp.fake_features.slice(0, 5).join(', ')}
-                  </p>
-                )}
-                {currentExp.real_features?.length > 0 && (
-                  <p className="text-xs text-slate-500 mt-1">
-                    <span className="text-emerald-600 font-medium">Real indicators:</span>{' '}
-                    {currentExp.real_features.slice(0, 5).join(', ')}
-                  </p>
-                )}
+                  {currentExp.fake_features?.length > 0 && (
+                    <p className="text-xs text-slate-500 mt-4">
+                      <span className="text-red-500 font-medium">Fake indicators:</span>{' '}
+                      {currentExp.fake_features.slice(0, 5).join(', ')}
+                    </p>
+                  )}
+                  {currentExp.real_features?.length > 0 && (
+                    <p className="text-xs text-slate-500 mt-1">
+                      <span className="text-emerald-600 font-medium">Real indicators:</span>{' '}
+                      {currentExp.real_features.slice(0, 5).join(', ')}
+                    </p>
+                  )}
 
-                <div className="mt-4 pt-3 border-t border-slate-100">
-                  <p className="text-[11px] text-slate-400">
-                    ℹ️ Feature attributions reflect words that most heavily influenced this model's prediction estimate. They do not constitute proof that an event factually occurred.
-                  </p>
-                </div>
-              </>
-            )}
+                  <div className="mt-4 pt-3 border-t border-slate-100">
+                    <p className="text-[11px] text-slate-400">
+                      ℹ️ Feature values show actual signed attributions in {currentExp.output_space || 'explainer space'}. Positive values push toward REAL; negative values push toward FAKE. Contribution bar lengths represent actual relative magnitudes normalized to the strongest feature.
+                    </p>
+                  </div>
+                </>
+              )
+            })()}
           </div>
 
           {/* Keywords + Clickbait */}

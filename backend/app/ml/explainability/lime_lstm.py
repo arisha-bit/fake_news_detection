@@ -133,9 +133,11 @@ def explain_lstm(
         predicted_index
     ]
 
-    # Get explanation for predicted class
+    # Get explanation for REAL class (label=1):
+    # positive weight pushes toward REAL (class 1)
+    # negative weight pushes toward FAKE (class 0)
     feature_list = explanation.as_list(
-        label=predicted_index
+        label=1
     )
 
     explanations = []
@@ -160,18 +162,21 @@ def explain_lstm(
         if clean_word.lower() in STOPWORDS:
             continue
 
-        # Skip extremely tiny contributions
-        if abs(float(impact)) < 0.001:
+        imp_val = float(impact)
+        if not np.isfinite(imp_val) or abs(imp_val) < 0.0001:
             continue
+
+        direction = (
+            "REAL"
+            if imp_val > 0
+            else "FAKE"
+        )
 
         explanations.append({
             "word": clean_word,
-            "impact": round(abs(float(impact)), 4),
-            "direction": (
-                "REAL"
-                if impact > 0
-                else "FAKE"
-            )
+            "impact": round(abs(imp_val), 4),
+            "weight": round(imp_val, 4),
+            "direction": direction,
         })
 
     explanations.sort(key=lambda x: x["impact"], reverse=True)
@@ -181,6 +186,7 @@ def explain_lstm(
     return {
         "prediction": prediction,
         "confidence": round(float(confidence), 4),
+        "output_space": "probability (ΔP)",
         "explanations": explanations[:num_features],
         "fake_features": fake_features,
         "real_features": real_features,

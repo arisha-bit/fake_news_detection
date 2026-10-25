@@ -59,7 +59,7 @@ class TestKnowledgeGraphAPIContract:
         "total_entities": 5,
         "total_nodes": 3,
         "total_edges": 2,
-        "entity_counts": {"PERSON": 2, "ORG": 1},
+        "entity_counts": {"PERSON": 1, "ORG": 2},
         "nodes": [
             {"id": "elon musk", "label": "Elon Musk", "type": "PERSON", "frequency": 2},
             {"id": "nasa", "label": "NASA", "type": "ORG", "frequency": 1},

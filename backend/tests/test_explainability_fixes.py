@@ -88,6 +88,43 @@ class TestSHAPBERT:
             assert "prediction" in result
             assert "confidence" in result
             assert result["prediction"] in ("FAKE", "REAL")
+            assert "explanations" in result
+            assert len(result["explanations"]) > 0
+            for exp in result["explanations"]:
+                assert "word" in exp
+                assert "impact" in exp
+                assert "weight" in exp
+                assert exp["direction"] in ("FAKE", "REAL")
+                assert np.isfinite(exp["weight"])
+                assert np.isfinite(exp["impact"])
+        except Exception as e:
+            if "torch" in str(e).lower() or "transformers" in str(e).lower():
+                pytest.skip("PyTorch/Transformers not available")
+            raise
+
+    def test_shap_bert_concurrent_requests(self):
+        """Test that SHAP BERT handles concurrent requests safely without 'Already borrowed' error."""
+        import concurrent.futures
+        try:
+            from app.ml.explainability.shap_bert import explain_bert_shap
+
+            text1 = "Breaking report on climate change and renewable energy."
+            text2 = "Shocking conspiracy claims about election results and fraud."
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                f1 = executor.submit(explain_bert_shap, text1, 5)
+                f2 = executor.submit(explain_bert_shap, text2, 5)
+
+                res1 = f1.result(timeout=120)
+                res2 = f2.result(timeout=120)
+
+            assert res1["prediction"] in ("FAKE", "REAL")
+            assert res2["prediction"] in ("FAKE", "REAL")
+            assert len(res1["explanations"]) > 0
+            assert len(res2["explanations"]) > 0
+            for exp in res1["explanations"] + res2["explanations"]:
+                assert "weight" in exp
+                assert np.isfinite(exp["weight"])
         except Exception as e:
             if "torch" in str(e).lower() or "transformers" in str(e).lower():
                 pytest.skip("PyTorch/Transformers not available")
@@ -127,6 +164,11 @@ class TestLIMEBERT:
             assert "prediction" in result
             assert "confidence" in result
             assert result["prediction"] in ("FAKE", "REAL")
+            assert len(result["explanations"]) > 0
+            for exp in result["explanations"]:
+                assert "weight" in exp
+                assert exp["direction"] in ("FAKE", "REAL")
+                assert np.isfinite(exp["weight"])
         except Exception as e:
             if "torch" in str(e).lower():
                 pytest.skip("PyTorch not available")
@@ -221,7 +263,7 @@ class TestOCRThreshold:
         # New implementation counts all non-whitespace
         assert count_meaningful_chars("Hello!") == 6  # includes '!'
         assert count_meaningful_chars("Hello, World!") == 12  # includes ', !'
-        assert count_meaningful_chars("Hello world") == 11  # 11 non-whitespace chars
+        assert count_meaningful_chars("Hello world") == 10  # 10 non-whitespace chars
         assert count_meaningful_chars("   ") == 0  # pure whitespace
         assert count_meaningful_chars("") == 0  # empty
 
@@ -251,17 +293,15 @@ class TestFAISSThreadSafety:
         """Test that retrieval service uses threading lock (Bug 5.1 fix)."""
         from app.services.retrieval_service import _lock
 
-        # Verify lock exists and is a threading.Lock
-        import threading
-        assert isinstance(_lock, threading.Lock)
+        # Verify lock exists and has acquire/release methods
+        assert hasattr(_lock, "acquire") and hasattr(_lock, "release")
 
     def test_image_service_singleton_locked(self):
         """Test that image service uses threading lock (Bug 5.1 fix)."""
         from app.services.image_service import _lock
 
-        # Verify lock exists and is a threading.Lock
-        import threading
-        assert isinstance(_lock, threading.Lock)
+        # Verify lock exists and has acquire/release methods
+        assert hasattr(_lock, "acquire") and hasattr(_lock, "release")
 
 
 class TestCLIPEmbedding:

@@ -265,7 +265,7 @@ class TestGraphServiceUnit:
 
     def test_normalise_id_collapses_spaces(self):
         from app.services.graph_service import _normalise_id
-        assert _normalise_id("Joe   Biden") == "joe   biden".strip()
+        assert _normalise_id("Joe   Biden") == "joe biden"
 
     def test_choose_label_prefers_longer(self):
         from app.services.graph_service import _choose_label

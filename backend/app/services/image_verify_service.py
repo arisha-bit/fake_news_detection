@@ -42,13 +42,9 @@ def count_meaningful_chars(text: str) -> int:
     """
     if not text:
         return 0
-    # Count all non-whitespace characters (preserves punctuation, symbols)
-    meaningful = len(text) - len(text) + len(text.replace(" ", "").replace("\n", "").replace("\t", "").replace("\r", ""))
-    # Simpler: count non-whitespace directly
     import re
-    # Count all chars that are not whitespace
-    non_ws = re.sub(r'\s+', '', text)
-    return len(non_ws)
+
+    return len(re.sub(r"\s+", "", text))
 
 
 def run_ocr_branch(image_path: str, model_choice: str = "logistic") -> dict:

@@ -8,6 +8,7 @@ class SHAPFeature(BaseModel):
     word: str
     impact: float
     direction: str  # "REAL" or "FAKE"
+    weight: Optional[float] = None  # Signed contribution in explainer's output space
 
 
 class SHAPExplanation(BaseModel):
@@ -38,6 +39,7 @@ class ExplanationResponse(BaseModel):
     method: str
     prediction: str
     confidence: float
+    output_space: Optional[str] = None
     explanations: list[SHAPFeature]
     fake_features: list[str] = []
     real_features: list[str] = []

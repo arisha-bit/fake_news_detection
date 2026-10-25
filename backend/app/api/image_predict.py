@@ -129,14 +129,12 @@ async def verify_image(
     Full multimodal image verification.
 
     Runs three analysis branches:
-    1. OCR → text fake news prediction
-    2. ResNet18 → image classification (FAKE/REAL) + Grad-CAM heatmap
+    1. OCR → text fake news prediction (when >20 meaningful OCR characters)
+    2. ResNet18 → image classification (FAKE/REAL)
     3. CLIP → FAISS reverse image search
 
-    For lstm/bert models, LIME explanations are generated on OCR text.
-    For logistic model, SHAP explanations are available via /predict endpoint.
-
-    Returns a combined verdict with reasoning and XAI data.
+    Does not generate Grad-CAM, SHAP, or LIME (use POST /upload/image or /predict/image).
+    Returns a combined verdict with reasoning.
     """
     t0 = time.perf_counter()
     validate_image(file)

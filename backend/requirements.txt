@@ -49,8 +49,8 @@ tensorflow
 # compatible. The torch.accelerator issue is bypassed in predict_bert.py
 # by NOT passing device_map and setting CUDA_VISIBLE_DEVICES=-1.
 transformers==5.12.1
-tokenizers>=0.21,<0.22
-huggingface_hub>=0.27,<1.0
+tokenizers>=0.22,<=0.23.0
+huggingface_hub>=1.5.0,<2.0
 datasets
 
 # ============================================================

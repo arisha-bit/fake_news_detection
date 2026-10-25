@@ -26,10 +26,11 @@ class UploadResponse(BaseModel):
     
     # OCR extraction
     extracted_text: str
-    
-    # Text prediction (on OCR text)
-    text_prediction: str  # "FAKE" | "REAL"
-    text_confidence: float
+    has_meaningful_text: bool = False
+
+    # Text prediction (only when OCR has >20 meaningful characters)
+    text_prediction: Optional[str] = None
+    text_confidence: Optional[float] = None
     
     # Text explainability
     keywords: list[str]
@@ -40,7 +41,7 @@ class UploadResponse(BaseModel):
     xai: Optional[dict] = None
     
     # Database references
-    prediction_id: UUID  # Text prediction record
+    prediction_id: Optional[UUID] = None
     uploaded_file_id: UUID
 
 

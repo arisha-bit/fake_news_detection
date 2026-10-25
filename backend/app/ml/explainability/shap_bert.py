@@ -1,12 +1,18 @@
 """
 SHAP explainability for DistilBERT using shap.Explainer with a HuggingFace pipeline.
 
-Uses the PARTITION explainer via shap.Explainer(pipeline(...)) which works
-correctly with transformers 4.36 on CPU without torch.accelerator calls.
+Uses the PARTITION explainer via shap.Explainer(pipeline(...)) on CPU.
+Synchronized with threading.Lock to avoid HuggingFace fast tokenizer
+Rust PyO3 `RuntimeError: Already borrowed` under concurrent requests.
 """
 
 import logging
+import os
 import re
+import threading
+import numpy as np
+
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 logger = logging.getLogger(__name__)
 
@@ -22,37 +28,40 @@ STOPWORDS = {
 }
 
 _explainer = None
+_bert_shap_lock = threading.Lock()
 
 
 def _get_explainer():
     global _explainer
     if _explainer is None:
-        import shap
-        import torch
-        from transformers import pipeline as hf_pipeline
-        from app.ml.inference.predict_bert import load_bert
+        with _bert_shap_lock:
+            if _explainer is None:
+                import shap
+                import torch
+                from transformers import pipeline as hf_pipeline
+                from app.ml.inference.predict_bert import load_bert
 
-        tokenizer, model = load_bert()
+                tokenizer, model = load_bert()
 
-        # Ensure model is on CPU (double-check after load_bert)
-        if torch.cuda.is_available():
-            model = model.to(torch.device("cpu"))
-            logger.info("Moved DistilBERT model to CPU explicitly")
+                # Ensure model is on CPU
+                if torch.cuda.is_available():
+                    model = model.to(torch.device("cpu"))
+                    logger.info("Moved DistilBERT model to CPU explicitly")
 
-        # Build a HuggingFace text-classification pipeline; device=-1 forces CPU
-        pipe = hf_pipeline(
-            "text-classification",
-            model=model,
-            tokenizer=tokenizer,
-            top_k=None,   # return all labels
-            device=-1,
-            truncation=True,
-            max_length=512,
-        )
+                # Build HuggingFace text-classification pipeline; device=-1 forces CPU
+                pipe = hf_pipeline(
+                    "text-classification",
+                    model=model,
+                    tokenizer=tokenizer,
+                    top_k=None,   # return all labels
+                    device=-1,
+                    truncation=True,
+                    max_length=512,
+                )
 
-        # shap.Explainer auto-selects PartitionExplainer for pipelines
-        _explainer = shap.Explainer(pipe)
-        logger.info("DistilBERT SHAP explainer ready on CPU.")
+                # shap.Explainer auto-selects PartitionExplainer for pipelines
+                _explainer = shap.Explainer(pipe)
+                logger.info("DistilBERT SHAP explainer ready on CPU.")
     return _explainer
 
 
@@ -60,33 +69,45 @@ def explain_bert_shap(text: str, top_k: int = 10) -> dict:
     """
     Generate SHAP explanation for the DistilBERT model.
 
-    Returns the same schema as all other explainers:
-        {prediction, confidence, explanations, fake_features, real_features}
+    Returns:
+        {
+            prediction,
+            confidence,
+            output_space: "probability (ΔP)",
+            explanations: [{word, impact, weight, direction}],
+            fake_features,
+            real_features
+        }
     """
-    import numpy as np
     from app.ml.inference.predict_bert import predict_news_bert
+
+    if not text or not text.strip():
+        return {
+            "prediction": "FAKE",
+            "confidence": 0.5,
+            "output_space": "probability (ΔP)",
+            "explanations": [],
+            "fake_features": [],
+            "real_features": [],
+        }
 
     # Get the actual model prediction first
     pred_res = predict_news_bert(text)
     prediction = pred_res["prediction"]
     confidence = pred_res["confidence"]
 
-    try:
+    # Keep text manageable on CPU without losing context
+    words = text.split()
+    text_for_shap = " ".join(words[:300]) if len(words) > 300 else text
+
+    # Protect entire SHAP partition evaluation with lock to prevent
+    # Hugging Face fast tokenizer `RuntimeError: Already borrowed`
+    with _bert_shap_lock:
         explainer = _get_explainer()
-        shap_values = explainer([text])
-    except Exception as exc:
-        logger.warning("DistilBERT SHAP explainer failed: %s", exc, exc_info=True)
-        # Return result without explanation rather than crashing
-        return {
-            "prediction": prediction,
-            "confidence": confidence,
-            "explanations": [],
-            "fake_features": [],
-            "real_features": [],
-        }
+        shap_values = explainer([text_for_shap])
 
     # shap_values.data[0]   — list of tokens/words
-    # shap_values.values[0] — shape (n_tokens,) or (n_tokens, n_classes)
+    # shap_values.values[0] — shape (n_tokens, n_classes)
     tokens = shap_values.data[0]
     values = shap_values.values[0]
 
@@ -122,7 +143,7 @@ def explain_bert_shap(text: str, top_k: int = 10) -> dict:
         else:
             val = float(values[i])
 
-        if abs(val) < 0.0001:
+        if not np.isfinite(val) or abs(val) < 0.0001:
             continue
 
         direction = "REAL" if val > 0 else "FAKE"
@@ -134,6 +155,7 @@ def explain_bert_shap(text: str, top_k: int = 10) -> dict:
         explanations.append({
             "word": clean_word,
             "impact": round(abs(val), 4),
+            "weight": round(val, 4),
             "direction": direction,
         })
 
@@ -142,6 +164,7 @@ def explain_bert_shap(text: str, top_k: int = 10) -> dict:
     return {
         "prediction": prediction,
         "confidence": round(confidence, 4),
+        "output_space": "probability (ΔP)",
         "explanations": explanations[:top_k],
         "fake_features": fake_features[:top_k],
         "real_features": real_features[:top_k],

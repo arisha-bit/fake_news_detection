@@ -148,6 +148,24 @@ def search_evidence(query: str, top_k: int = 5) -> list[dict]:
         normalize_embeddings=True,
     ).astype(np.float32)
 
+    if query_vec.shape[-1] != index.d:
+        logger.error(
+            "Embedding dim mismatch: query=%d, index=%d",
+            query_vec.shape[-1],
+            index.d,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                f"Evidence embedding dimension mismatch: "
+                f"{query_vec.shape[-1]} vs index {index.d}"
+            ),
+        )
+
+    if index.ntotal == 0:
+        logger.warning("Evidence FAISS index is empty.")
+        return []
+
     # FAISS inner product search (= cosine similarity on normalised vecs)
     k = min(top_k, index.ntotal)
     similarities, indices = index.search(query_vec, k)

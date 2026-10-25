@@ -95,13 +95,13 @@ function PropagandaTab() {
           <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
             <div className="flex items-center justify-between mb-2">
               <p className="text-sm font-semibold text-slate-600">Propaganda Score</p>
-              <p className={`text-xl font-bold ${scoreColor(result.overall_score)}`}>
-                {Math.round(result.overall_score * 100)}%
+              <p className={`text-xl font-bold ${scoreColor(result.overall_score || 0)}`}>
+                {Math.round((result.overall_score || 0) * 100)}%
               </p>
             </div>
             <p className="text-sm text-slate-500">{result.summary}</p>
           </div>
-          {result.techniques_found.length > 0 && (
+          {result.techniques_found && result.techniques_found.length > 0 ? (
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
               <p className="px-5 py-3 border-b border-slate-100 text-sm font-semibold text-slate-600">Detected Techniques</p>
               <div className="divide-y divide-slate-50">
@@ -122,6 +122,11 @@ function PropagandaTab() {
                   </div>
                 ))}
               </div>
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm text-center">
+              <p className="text-xs text-emerald-600 font-medium">✓ No manipulation techniques detected</p>
+              <p className="text-[11px] text-slate-400 mt-1">The text did not match any of the 10 recognised propaganda patterns.</p>
             </div>
           )}
         </div>
@@ -153,6 +158,10 @@ function KnowledgeGraphTab() {
     GPE: 'bg-emerald-50 text-emerald-600 border-emerald-100',
     DATE: 'bg-amber-50 text-amber-600 border-amber-100',
     EVENT: 'bg-pink-50 text-pink-600 border-pink-100',
+    PRODUCT: 'bg-cyan-50 text-cyan-600 border-cyan-100',
+    LAW: 'bg-blue-50 text-blue-600 border-blue-100',
+    WORK_OF_ART: 'bg-purple-50 text-purple-600 border-purple-100',
+    LANGUAGE: 'bg-teal-50 text-teal-600 border-teal-100',
   }
 
   return (
@@ -183,43 +192,63 @@ function KnowledgeGraphTab() {
           </div>
 
           {/* Entity counts by type */}
-          <div className="flex flex-wrap gap-2">
-            {Object.entries(result.entity_counts).map(([type, count]) => (
-              <span key={type} className={`text-xs font-medium px-2.5 py-1 rounded-full border ${typeColors[type] || 'bg-slate-50 text-slate-500 border-slate-200'}`}>
-                {type}: {count}
-              </span>
-            ))}
-          </div>
-
-          {/* Nodes */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
-            <p className="px-5 py-3 border-b border-slate-100 text-sm font-semibold text-slate-600">Entities</p>
-            <div className="p-4 flex flex-wrap gap-2">
-              {result.nodes.map((node) => (
-                <div key={node.id} className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border ${typeColors[node.type] || 'bg-slate-50 text-slate-600 border-slate-200'}`}>
-                  <span className="font-medium">{node.label}</span>
-                  <span className="opacity-60">×{node.frequency}</span>
-                </div>
+          {result.entity_counts && Object.keys(result.entity_counts).length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(result.entity_counts).map(([type, count]) => (
+                <span key={type} className={`text-xs font-medium px-2.5 py-1 rounded-full border ${typeColors[type] || 'bg-slate-50 text-slate-500 border-slate-200'}`}>
+                  {type}: {count}
+                </span>
               ))}
             </div>
-          </div>
+          )}
 
-          {/* Top edges */}
-          {result.edges.length > 0 && (
+          {/* Nodes */}
+          {result.nodes && result.nodes.length > 0 ? (
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
-              <p className="px-5 py-3 border-b border-slate-100 text-sm font-semibold text-slate-600">Top Relationships</p>
-              <div className="divide-y divide-slate-50">
-                {result.edges.slice(0, 8).map((edge, i) => (
-                  <div key={i} className="px-5 py-3 flex items-center gap-2 text-sm text-slate-600">
-                    <span className="font-medium">{edge.source}</span>
-                    <span className="text-slate-300">↔</span>
-                    <span className="font-medium">{edge.target}</span>
-                    <span className="ml-auto text-xs text-slate-400">×{edge.weight}</span>
+              <p className="px-5 py-3 border-b border-slate-100 text-sm font-semibold text-slate-600">Entities</p>
+              <div className="p-4 flex flex-wrap gap-2">
+                {result.nodes.map((node) => (
+                  <div key={node.id} className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border ${typeColors[node.type] || 'bg-slate-50 text-slate-600 border-slate-200'}`}>
+                    <span className="font-medium">{node.label}</span>
+                    <span className="opacity-60">×{node.frequency}</span>
                   </div>
                 ))}
               </div>
             </div>
+          ) : (
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 text-center shadow-sm">
+              <p className="text-xs text-slate-500 font-medium">No Named Entities Detected</p>
+              <p className="text-[11px] text-slate-400 mt-1">The provided text did not contain recognized named entities (such as people, organizations, locations, dates, products, or laws).</p>
+            </div>
           )}
+
+          {/* Top edges */}
+          {result.edges && result.edges.length > 0 ? (
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
+              <p className="px-5 py-3 border-b border-slate-100 text-sm font-semibold text-slate-600">Top Relationships</p>
+              <div className="divide-y divide-slate-50">
+                {result.edges.slice(0, 10).map((edge, i) => {
+                  const srcLabel = edge.source_label || result.nodes?.find(n => n.id === edge.source)?.label || edge.source
+                  const tgtLabel = edge.target_label || result.nodes?.find(n => n.id === edge.target)?.label || edge.target
+                  return (
+                    <div key={i} className="px-5 py-3 flex items-center gap-2.5 text-sm text-slate-700">
+                      <span className="font-semibold text-slate-800">{srcLabel}</span>
+                      <span className="text-[11px] font-medium text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                        {edge.relation || 'co-occurs with'}
+                      </span>
+                      <span className="font-semibold text-slate-800">{tgtLabel}</span>
+                      <span className="ml-auto text-xs text-slate-400">×{edge.weight} mention{edge.weight > 1 ? 's' : ''}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ) : result.nodes && result.nodes.length > 0 ? (
+            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm text-center">
+              <p className="text-xs text-slate-500 font-medium">No Direct Relationships Detected</p>
+              <p className="text-[11px] text-slate-400 mt-1">Relationships are established when two or more entities appear within the same sentence.</p>
+            </div>
+          ) : null}
         </div>
       )}
     </div>

@@ -221,16 +221,41 @@ _TECHNIQUES: list[_TechniqueSpec] = [
 # Public API
 # ---------------------------------------------------------------------------
 
+def _normalize_text_for_propaganda(text: str) -> str:
+    """
+    Normalize text to ensure regex patterns match reliably regardless of formatting:
+    - Normalizes curly/typographical quotes and apostrophes (‘ ’ ` -> ', “ ” -> ")
+    - Normalizes typographical hyphens and dashes (– — -> -)
+    - Normalizes non-breaking spaces and zero-width characters
+    """
+    t = text.replace("’", "'").replace("‘", "'").replace("`", "'")
+    t = t.replace("“", '"').replace("”", '"')
+    t = t.replace("–", "-").replace("—", "-")
+    t = t.replace("\u00a0", " ").replace("\u200b", "").replace("\ufeff", "")
+    return t
+
+
 def detect_propaganda(text: str) -> dict:
     """
     Analyse *text* for propaganda techniques.
 
-    Returns a dict matching PropagandaResponse fields.
+    Intended Methodology & Scoring Formula:
+    1. Each technique spec defines a set of pattern regexes, saturation threshold,
+       and relative importance weight.
+    2. Per-technique confidence:
+           confidence = min(len(matched_phrases) / saturation, 1.0)
+    3. Overall propaganda score:
+           overall_score = sum(confidence_i * weight_i) / sum(weight_i)
+       for all detected techniques (clamped to [0.0, 1.0]).
+       If no techniques are detected, overall_score = 0.0.
+
+    Returns a dict matching PropagandaResponse schema.
     """
     if not text or not text.strip():
         return _empty_result()
 
-    normalised = text.lower()
+    cleaned = _normalize_text_for_propaganda(text)
+    normalised = cleaned.lower()
     results = []
 
     for spec in _TECHNIQUES:
@@ -248,11 +273,14 @@ def detect_propaganda(text: str) -> dict:
                 "_weight": spec.weight,
             })
 
-    # Overall score: weighted average of detected techniques
+    # Overall score: weighted average scaled by technique breadth (multi-technique severity)
     if results:
         total_weight = sum(r["_weight"] for r in results)
         weighted_sum = sum(r["confidence"] * r["_weight"] for r in results)
-        overall = round(min(weighted_sum / total_weight, 1.0), 4)
+        base_score = weighted_sum / total_weight
+        # Breadth scaling: presence of multiple distinct propaganda techniques amplifies overall manipulative severity
+        breadth_factor = 1.0 + 0.15 * (len(results) - 1)
+        overall = round(min(base_score * breadth_factor, 1.0), 4)
     else:
         overall = 0.0
 

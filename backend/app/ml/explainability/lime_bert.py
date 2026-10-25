@@ -97,7 +97,10 @@ def explain_bert(text: str, num_features: int = 10) -> dict:
     prediction = "REAL" if predicted_index == 1 else "FAKE"
     confidence = float(probabilities[predicted_index])
 
-    feature_list = explanation.as_list(label=predicted_index)
+    # Get explanation for REAL class (label=1):
+    # positive weight pushes toward REAL (class 1)
+    # negative weight pushes toward FAKE (class 0)
+    feature_list = explanation.as_list(label=1)
 
     explanations = []
     fake_features = []
@@ -108,10 +111,11 @@ def explain_bert(text: str, num_features: int = 10) -> dict:
         clean_word = re.sub(r"[^\w'-]", "", word).strip()
         if not clean_word or clean_word.lower() in STOPWORDS:
             continue
-        if abs(float(impact)) < 0.001:
+        imp_val = float(impact)
+        if not np.isfinite(imp_val) or abs(imp_val) < 0.0001:
             continue
 
-        direction = "REAL" if impact > 0 else "FAKE"
+        direction = "REAL" if imp_val > 0 else "FAKE"
         if direction == "REAL":
             real_features.append(clean_word)
         else:
@@ -119,7 +123,8 @@ def explain_bert(text: str, num_features: int = 10) -> dict:
 
         explanations.append({
             "word": clean_word,
-            "impact": round(abs(float(impact)), 4),
+            "impact": round(abs(imp_val), 4),
+            "weight": round(imp_val, 4),
             "direction": direction,
         })
 
@@ -128,6 +133,7 @@ def explain_bert(text: str, num_features: int = 10) -> dict:
     return {
         "prediction": prediction,
         "confidence": round(float(confidence), 4),
+        "output_space": "probability (ΔP)",
         "explanations": explanations[:num_features],
         "fake_features": fake_features,
         "real_features": real_features,

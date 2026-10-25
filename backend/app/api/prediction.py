@@ -1,8 +1,8 @@
 """
 Prediction API.
 
-XAI (SHAP) is only supported for the Logistic Regression model.
-LSTM and DistilBERT return xai=None — SHAP does not explain them.
+Initial predict responses include pre-computed SHAP for logistic only.
+LSTM and DistilBERT use POST /predict/explain for on-demand SHAP or LIME.
 """
 
 import logging

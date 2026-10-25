@@ -120,7 +120,7 @@ def explain_lstm_shap(text: str, top_k: int = 10) -> dict:
 
         # Index 1 = REAL (positive → REAL, negative → FAKE)
         val = float(values[i, 1]) if values.ndim == 2 else float(values[i])
-        if abs(val) < 0.0001:
+        if not np.isfinite(val) or abs(val) < 0.0001:
             continue
 
         direction = "REAL" if val > 0 else "FAKE"
@@ -132,6 +132,7 @@ def explain_lstm_shap(text: str, top_k: int = 10) -> dict:
         explanations.append({
             "word": clean_word,
             "impact": round(abs(val), 4),
+            "weight": round(val, 4),
             "direction": direction,
         })
 
@@ -140,6 +141,7 @@ def explain_lstm_shap(text: str, top_k: int = 10) -> dict:
     return {
         "prediction": prediction,
         "confidence": round(confidence, 4),
+        "output_space": "probability (ΔP)",
         "explanations": explanations[:top_k],
         "fake_features": fake_features[:top_k],
         "real_features": real_features[:top_k],

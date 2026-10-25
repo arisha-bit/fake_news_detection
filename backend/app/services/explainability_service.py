@@ -99,6 +99,7 @@ def generate_model_explanation(text: str, model_choice: str = "logistic", method
         "explanation_type": method,  # "shap" or "lime"
         "prediction": res.get("prediction", "UNKNOWN"),
         "confidence": res.get("confidence", 0.0),
+        "output_space": res.get("output_space", "log-odds" if (model_choice == "logistic" and method == "shap") else "probability (ΔP)"),
         "explanations": res.get("explanations", []),
         "fake_features": res.get("fake_features", []),
         "real_features": res.get("real_features", []),

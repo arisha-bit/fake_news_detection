@@ -19,11 +19,23 @@ class GraphNode(BaseModel):
 
 
 class GraphEdge(BaseModel):
-    """A co-occurrence relationship between two nodes."""
+    """A co-occurrence or syntactic relationship between two nodes."""
 
     source: str = Field(..., description="Source node id")
     target: str = Field(..., description="Target node id")
     weight: int = Field(..., description="Number of sentences where both appear together")
+    relation: Optional[str] = Field(
+        default="co-occurs with",
+        description="Relationship predicate e.g. 'announced', 'partnered with', or 'co-occurs with'"
+    )
+    source_label: Optional[str] = Field(
+        default=None,
+        description="Display label of the source entity"
+    )
+    target_label: Optional[str] = Field(
+        default=None,
+        description="Display label of the target entity"
+    )
 
 
 class GraphRequest(BaseModel):
