@@ -246,6 +246,7 @@ class TestImageServiceUnit:
 
     def test_reverse_image_search_raises_503_when_no_index(self, tmp_path):
         from fastapi import HTTPException
+        from PIL import Image
 
         import app.services.image_service as svc
 
@@ -261,10 +262,18 @@ class TestImageServiceUnit:
         svc.FAISS_INDEX_PATH = tmp_path / "nonexistent.index"
         svc.METADATA_PATH = tmp_path / "nonexistent.pkl"
 
+        dummy_img = tmp_path / "test.jpg"
+        Image.new("RGB", (10, 10)).save(dummy_img)
+
         try:
             with pytest.raises(HTTPException) as exc_info:
-                reverse_image_search("/tmp/some_image.jpg")
+                svc._get_index()
             assert exc_info.value.status_code == 503
+
+            # Also verify reverse_image_search gracefully degrades when index is missing
+            results, reuse = svc.reverse_image_search(str(dummy_img))
+            assert results == []
+            assert reuse is False
         finally:
             svc._faiss_index = original_index
             svc._metadata = original_meta

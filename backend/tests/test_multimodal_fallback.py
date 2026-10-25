@@ -13,8 +13,9 @@ def test_reverse_image_search_falls_back_when_index_missing(monkeypatch, tmp_pat
     monkeypatch.setattr(image_service, "_get_clip", fake_get_clip)
     monkeypatch.setattr(image_service, "_get_index", fake_get_index)
 
+    from PIL import Image
     image_path = tmp_path / "sample.png"
-    image_path.write_bytes(b"not-a-real-image")
+    Image.new("RGB", (10, 10), color="white").save(image_path)
 
     results, possible_reuse = image_service.reverse_image_search(str(image_path), top_k=3)
 
